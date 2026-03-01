@@ -1,142 +1,152 @@
-# claude-tmux
+# claude-tmux-kr
 
-A terminal user interface for managing multiple Claude Code sessions within tmux. claude-tmux provides a centralized view of all your Claude Code instances, enabling quick switching, status monitoring, and session lifecycle management, including git worktree and pull request support.
+> **이 저장소는 [nielsgroen/claude-tmux](https://github.com/nielsgroen/claude-tmux)의 Fork입니다.**
+>
+> 원본 프로젝트를 기반으로 **한국어 번역 및 일부 커스터마이즈**를 목적으로 관리됩니다.
+> 원본 저장소의 라이선스(AGPL-3.0)를 그대로 따릅니다.
 
-## Installation
+tmux 내에서 여러 Claude Code 세션을 관리하기 위한 터미널 UI(TUI) 도구입니다. claude-tmux는 모든 Claude Code 인스턴스를 한눈에 보여주며, 빠른 세션 전환, 상태 모니터링, 세션 생명주기 관리(git worktree 및 Pull Request 지원 포함)를 제공합니다.
+
+## 설치
 
 ### Cargo install
 
-Just run:
+아래 명령어를 실행하세요:
 
 ```bash
 cargo install claude-tmux
 ```
 
-Add the following line to your `~/.tmux.conf`:
+`~/.tmux.conf`에 다음 줄을 추가하세요:
 
 ```bash
 bind-key C-c display-popup -E -w 80 -h 30 "~/.cargo/bin/claude-tmux"
 ```
 
-### Build from source
+### 소스에서 빌드
 
 ```bash
-git clone https://github.com/nielsgroen/claude-tmux.git
-cd claude-tmux
+git clone https://github.com/wo7864/claude-tmux-kr.git
+cd claude-tmux-kr
 cargo build --release
 ```
 
-Add this to your `~/.tmux.conf` to bind claude-tmux to a key:
+`~/.tmux.conf`에 다음을 추가하여 키 바인딩을 설정하세요:
 
 ```bash
 bind-key C-c display-popup -E -w 80 -h 30 "/path/to/claude-tmux"
 ```
 
-### How to use
+### 사용 방법
 
-Reload your tmux configuration.
-Press `Ctrl-b, Ctrl-c` to open claude-tmux from any tmux session.
+tmux 설정을 다시 불러옵니다.
+아무 tmux 세션에서 `Ctrl-b, Ctrl-c`를 누르면 claude-tmux가 열립니다.
 
-To use pull requests, make sure you have `gh` installed.
+Pull Request 기능을 사용하려면 `gh`(GitHub CLI)가 설치되어 있어야 합니다.
 
-### Tmux options
+### tmux 옵션
 
-Options:
-- `-E` — Close popup when claude-tmux exits
-- `-w 80 -h 30` — Popup dimensions (adjust to preference)
+옵션 설명:
+- `-E` — claude-tmux 종료 시 팝업도 함께 닫힘
+- `-w 80 -h 30` — 팝업 크기 (원하는 대로 조정 가능)
 
-## Features
+## 기능
 
-- **Session Overview** — See all tmux sessions at a glance with Claude Code status indicators
-- **Status Detection** — Know whether each Claude Code instance is idle, working, or waiting for input
-- **Quick Switching** — Jump to any session with minimal keystrokes
-- **Live Preview** — See the last lines of the selected session's Claude Code pane with full ANSI color support
-- **Session Management** — Create, kill, and rename sessions without leaving the TUI
-- **Expandable Details** — View metadata like window count, pane commands, uptime, and attachment status
-- **Fuzzy Filtering** — Quickly filter sessions by name or path
+- **세션 개요** — 모든 tmux 세션을 Claude Code 상태 표시와 함께 한눈에 확인
+- **상태 감지** — 각 Claude Code 인스턴스가 유휴, 작업 중, 입력 대기 중인지 표시
+- **빠른 전환** — 최소한의 키 입력으로 원하는 세션으로 이동
+- **실시간 미리보기** — 선택한 세션의 Claude Code 패널 마지막 줄을 ANSI 색상과 함께 표시
+- **세션 관리** — TUI를 벗어나지 않고 세션 생성, 종료, 이름 변경 가능
+- **상세 정보 확장** — 윈도우 수, 패널 명령어, 가동 시간, 연결 상태 등 메타데이터 확인
+- **퍼지 필터링** — 이름이나 경로로 세션을 빠르게 검색
 
-## Screenshots
+## 스크린샷
 
-View the screenshots at [GitHub](https://github.com/nielsgroen/claude-tmux).
+스크린샷은 [GitHub](https://github.com/nielsgroen/claude-tmux)에서 확인할 수 있습니다.
 
-<img src="docs/images/screenshot.png" alt="claude-tmux Screenshot" width="400">
+<img src="docs/images/screenshot.png" alt="claude-tmux 스크린샷" width="400">
 
-<img src="docs/images/screenshot2.png" alt="claude-tmux Screenshot 2" width="400">
+<img src="docs/images/screenshot2.png" alt="claude-tmux 스크린샷 2" width="400">
 
-**Status indicators:**
-- `●` — Working: Claude is actively processing
-- `○` — Idle: Ready for input
-- `◐` — Waiting for input: Permission prompt (`[y/n]`)
-- `?` — Unknown: Not a Claude Code session or status unclear
+**상태 표시:**
+- `●` — 작업 중: Claude가 처리 중
+- `○` — 유휴: 입력 대기 상태
+- `◐` — 입력 대기: 권한 확인 프롬프트 (`[y/n]`)
+- `?` — 알 수 없음: Claude Code 세션이 아니거나 상태를 판별할 수 없음
 
-## Keybindings
+## 키 바인딩
 
-### Navigation
+### 탐색
 
-| Key | Action |
+| 키 | 동작 |
 |-----|--------|
-| `j` / `↓` | Move selection down |
-| `k` / `↑` | Move selection up |
-| `l` / `→` | Expand session details |
-| `h` / `←` | Collapse session details |
-| `Enter` | Switch to selected session |
+| `j` / `↓` | 아래로 이동 |
+| `k` / `↑` | 위로 이동 |
+| `l` / `→` | 세션 상세 정보 펼치기 |
+| `h` / `←` | 세션 상세 정보 접기 |
+| `Enter` | 선택한 세션으로 전환 |
 
-### Actions
+### 동작
 
-| Key | Action |
+| 키 | 동작 |
 |-----|--------|
-| `n` | Create new session |
-| `K` | Kill selected session (with confirmation) |
-| `r` | Rename selected session |
-| `/` | Filter sessions by name/path |
-| `Ctrl+c` | Clear filter |
-| `R` | Refresh session list |
+| `n` | 새 세션 생성 |
+| `K` | 선택한 세션 종료 (확인 후) |
+| `r` | 선택한 세션 이름 변경 |
+| `/` | 이름/경로로 세션 필터링 |
+| `Ctrl+c` | 필터 초기화 |
+| `R` | 세션 목록 새로고침 |
 
-### Other
+### 기타
 
-| Key | Action |
+| 키 | 동작 |
 |-----|--------|
-| `?` | Show help |
-| `q` / `Esc` | Quit |
+| `?` | 도움말 표시 |
+| `q` / `Esc` | 종료 |
 
-## Status Detection
+## 상태 감지
 
-claude-tmux detects Claude Code status by analyzing pane content:
+claude-tmux는 패널 내용을 분석하여 Claude Code의 상태를 감지합니다:
 
-| Pattern | Status |
+| 패턴 | 상태 |
 |---------|--------|
-| Input prompt (`❯`) with border above + "ctrl+c to interrupt" | Working |
-| Input prompt (`❯`) with border above, no interrupt message | Idle |
-| Contains `[y/n]` or `[Y/n]` | Waiting for input |
-| Otherwise | Unknown |
+| 입력 프롬프트 (`❯`) + 상단 테두리 + "ctrl+c to interrupt" | 작업 중 |
+| 입력 프롬프트 (`❯`) + 상단 테두리, interrupt 메시지 없음 | 유휴 |
+| `[y/n]` 또는 `[Y/n]` 포함 | 입력 대기 |
+| 그 외 | 알 수 없음 |
 
-## Session Model
+## 세션 모델
 
-claude-tmux identifies sessions containing Claude Code by looking for panes running the `claude` command. The displayed working directory and preview come from the Claude Code pane when present, otherwise from the first pane.
+claude-tmux는 `claude` 명령어를 실행 중인 패널을 찾아 Claude Code가 포함된 세션을 식별합니다. 표시되는 작업 디렉토리와 미리보기는 Claude Code 패널이 있을 경우 해당 패널에서, 없을 경우 첫 번째 패널에서 가져옵니다.
 
-Sessions are sorted with attached sessions first, then alphabetically by name.
+세션은 연결된(attached) 세션을 먼저, 그 다음 이름순으로 정렬됩니다.
 
-## Dependencies
+## 의존성
 
-- [ratatui](https://ratatui.rs/) — Terminal UI framework
-- [crossterm](https://github.com/crossterm-rs/crossterm) — Terminal manipulation
-- [ansi-to-tui](https://github.com/uttarayan21/ansi-to-tui) — ANSI escape sequence rendering
-- [anyhow](https://github.com/dtolnay/anyhow) — Error handling
-- [dirs](https://github.com/dirs-dev/dirs-rs) — Home directory resolution
-- [unicode-width](https://github.com/unicode-rs/unicode-width) — Text alignment
+- [ratatui](https://ratatui.rs/) — 터미널 UI 프레임워크
+- [crossterm](https://github.com/crossterm-rs/crossterm) — 터미널 조작
+- [ansi-to-tui](https://github.com/uttarayan21/ansi-to-tui) — ANSI 이스케이프 시퀀스 렌더링
+- [anyhow](https://github.com/dtolnay/anyhow) — 에러 처리
+- [dirs](https://github.com/dirs-dev/dirs-rs) — 홈 디렉토리 경로 확인
+- [unicode-width](https://github.com/unicode-rs/unicode-width) — 텍스트 정렬
 
-## Project Structure
+## 프로젝트 구조
 
 ```
 claude-tmux/
 ├── Cargo.toml
 ├── src/
-│   ├── main.rs        # Entry point, terminal setup
-│   ├── app.rs         # Application state machine
-│   ├── ui.rs          # Ratatui rendering
-│   ├── tmux.rs        # tmux command wrapper
-│   ├── session.rs     # Session/Pane data structures
-│   ├── detection.rs   # Claude Code status detection
-│   └── input.rs       # Keyboard event handling
+│   ├── main.rs        # 진입점, 터미널 설정
+│   ├── app.rs         # 애플리케이션 상태 머신
+│   ├── ui.rs          # Ratatui 렌더링
+│   ├── tmux.rs        # tmux 명령어 래퍼
+│   ├── session.rs     # 세션/패널 데이터 구조
+│   ├── detection.rs   # Claude Code 상태 감지
+│   └── input.rs       # 키보드 이벤트 처리
 └── README.md
 ```
+
+## 원본 저장소
+
+- 원본: [nielsgroen/claude-tmux](https://github.com/nielsgroen/claude-tmux)
+- 라이선스: [AGPL-3.0](./LICENSE)
