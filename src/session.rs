@@ -43,6 +43,8 @@ impl ClaudeCodeStatus {
 pub struct Pane {
     /// Pane ID (e.g., "%0")
     pub id: String,
+    /// PID of the pane's shell process
+    pub pid: u32,
     /// Current command running in the pane
     pub current_command: String,
     /// Current working directory

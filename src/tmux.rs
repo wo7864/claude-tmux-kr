@@ -92,7 +92,7 @@ impl Tmux {
                 "-t",
                 session,
                 "-F",
-                "#{pane_id}\t#{pane_current_command}\t#{pane_current_path}",
+                "#{pane_id}\t#{pane_pid}\t#{pane_current_command}\t#{pane_current_path}",
             ])
             .output()
             .context("Failed to execute tmux list-panes")?;
@@ -106,11 +106,12 @@ impl Tmux {
 
         for line in stdout.lines() {
             let parts: Vec<&str> = line.split('\t').collect();
-            if parts.len() >= 3 {
+            if parts.len() >= 4 {
                 panes.push(Pane {
                     id: parts[0].to_string(),
-                    current_command: parts[1].to_string(),
-                    current_path: PathBuf::from(parts[2]),
+                    pid: parts[1].parse().unwrap_or(0),
+                    current_command: parts[2].to_string(),
+                    current_path: PathBuf::from(parts[3]),
                 });
             }
         }
@@ -131,7 +132,11 @@ impl Tmux {
 
         for pane in panes {
             // Check if this pane is running claude
-            if pane.current_command == "claude" || pane.current_command.contains("claude") {
+            let is_claude = pane.current_command == "claude"
+                || pane.current_command.contains("claude")
+                || (pane.pid > 0 && Self::has_claude_child_process(pane.pid));
+
+            if is_claude {
                 // Capture pane content to detect status (strip empty lines for detection)
                 let status = Self::capture_pane(&pane.id, 15, true)
                     .map(|content| detect_status(&content))
@@ -146,6 +151,45 @@ impl Tmux {
         }
 
         (None, ClaudeCodeStatus::Unknown, None)
+    }
+
+    /// Check if any child process of the given PID is "claude"
+    fn has_claude_child_process(pid: u32) -> bool {
+        // Get child PIDs using pgrep -P <pid>
+        let child_pids = Command::new("pgrep")
+            .args(["-P", &pid.to_string()])
+            .output();
+
+        let child_pids = match child_pids {
+            Ok(output) if output.status.success() => {
+                String::from_utf8_lossy(&output.stdout).to_string()
+            }
+            _ => return false,
+        };
+
+        for child_pid in child_pids.lines() {
+            let child_pid = child_pid.trim();
+            if child_pid.is_empty() {
+                continue;
+            }
+
+            // Get the command name of this child process
+            let comm = Command::new("ps")
+                .args(["-p", child_pid, "-o", "comm="])
+                .output();
+
+            if let Ok(output) = comm {
+                if output.status.success() {
+                    let comm_name = String::from_utf8_lossy(&output.stdout);
+                    let comm_name = comm_name.trim();
+                    if comm_name == "claude" || comm_name.contains("claude") {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
     }
 
     /// Capture the last N lines of a pane's content
