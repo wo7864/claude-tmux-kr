@@ -20,7 +20,7 @@ cargo install claude-tmux
 `~/.tmux.conf`에 다음 줄을 추가하세요:
 
 ```bash
-bind-key C-c display-popup -E -w 80 -h 30 "~/.cargo/bin/claude-tmux"
+bind-key v display-popup -E -w 80 -h 30 "~/.cargo/bin/claude-tmux"
 ```
 
 ### 소스에서 빌드
@@ -34,13 +34,13 @@ cargo build --release
 `~/.tmux.conf`에 다음을 추가하여 키 바인딩을 설정하세요:
 
 ```bash
-bind-key C-c display-popup -E -w 80 -h 30 "/path/to/claude-tmux"
+bind-key v display-popup -E -w 80 -h 30 "/path/to/claude-tmux"
 ```
 
 ### 사용 방법
 
 tmux 설정을 다시 불러옵니다.
-아무 tmux 세션에서 `Ctrl-b, Ctrl-c`를 누르면 claude-tmux가 열립니다.
+아무 tmux 세션에서 `Ctrl-b, v`를 누르면 claude-tmux가 열립니다.
 
 Pull Request 기능을 사용하려면 `gh`(GitHub CLI)가 설치되어 있어야 합니다.
 
@@ -149,6 +149,10 @@ claude-tmux/
 ## 원본과의 차이점
 
 이 Fork는 원본 [nielsgroen/claude-tmux](https://github.com/nielsgroen/claude-tmux)에 다음과 같은 변경을 적용했습니다.
+
+### tmux 바인드 키 변경
+
+원본의 `Ctrl-b, Ctrl-c`에서 `Ctrl-b, v`로 변경했습니다. `~/.tmux.conf`의 `bind-key` 줄에서 원하는 키로 자유롭게 수정할 수 있습니다.
 
 ### UI 전체 한국어 번역
 
