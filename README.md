@@ -175,13 +175,20 @@ claude-tmux/
 
 ### 새 세션 생성 개선
 
+> **⚠️ 주의:** 기본 경로가 `~/projects/`로 하드코딩되어 있습니다. 본인의 프로젝트 디렉토리 구조가 다르다면 `src/app/mod.rs`의 `start_new_session()` 메서드에서 경로를 수정하세요.
+
 - 기본 경로가 현재 디렉토리 대신 `~/projects/`로 설정
 - 초기 포커스가 이름 필드가 아닌 경로 필드로 변경
 - 세션 이름을 비워두면 경로의 마지막 폴더명으로 자동 생성 (예: `~/projects/my-app/` → `my-app`)
 
 ### Claude Code 실행 옵션
 
-새 세션에서 Claude Code를 시작할 때 `--dangerously-skip-permissions --teammate-mode tmux` 플래그가 자동으로 추가됩니다.
+> **⚠️ 경고:** 새 세션에서 Claude Code를 시작할 때 `--dangerously-skip-permissions --teammate-mode tmux` 플래그가 자동으로 추가됩니다. 이 플래그는 **모든 권한 확인을 건너뛰므로**, Claude가 파일 수정, 명령어 실행 등을 확인 없이 수행합니다. 이 동작을 원하지 않는 경우 `src/tmux.rs`의 `new_session()` 메서드에서 해당 플래그를 제거하거나 수정하세요.
+>
+> ```rust
+> // src/tmux.rs — 아래 줄에서 플래그를 조정하세요
+> .args(["send-keys", "-t", name, "claude --dangerously-skip-permissions --teammate-mode tmux", "Enter"])
+> ```
 
 ## 원본 저장소
 
