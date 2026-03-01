@@ -228,7 +228,7 @@ impl Tmux {
         if start_claude {
             // Send claude command to the new session
             let _ = Command::new("tmux")
-                .args(["send-keys", "-t", name, "claude", "Enter"])
+                .args(["send-keys", "-t", name, "claude --dangerously-skip-permissions --teammate-mode tmux", "Enter"])
                 .status();
         }
 

@@ -13,7 +13,7 @@ use ratatui::{
     layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span, Text},
-    widgets::{Clear, List, ListItem, Paragraph, StatefulWidget},
+    widgets::{Block, Borders, Clear, List, ListItem, Paragraph, StatefulWidget},
     Frame,
 };
 use unicode_width::UnicodeWidthStr;
@@ -25,25 +25,28 @@ use crate::session::ClaudeCodeStatus;
 pub fn render(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
 
-    // Calculate preview height (roughly 50% of available space, min 8, max 20 lines)
-    let available_height = area.height.saturating_sub(4); // minus header, status, footer
-    let preview_height = (available_height * 50 / 100).clamp(8, 20);
-
-    // Main layout: header, session list, preview, status bar, footer
-    let layout = Layout::vertical([
-        Constraint::Length(1),              // Header
-        Constraint::Min(3),                 // Session list
-        Constraint::Length(preview_height), // Preview pane
-        Constraint::Length(1),              // Status bar
-        Constraint::Length(1),              // Footer
+    // Main layout: header, center (session list + preview), status bar, footer
+    let outer = Layout::vertical([
+        Constraint::Length(1), // Header
+        Constraint::Min(3),   // Center area
+        Constraint::Length(1), // Status bar
+        Constraint::Length(1), // Footer
     ])
     .split(area);
 
-    render_header(frame, app, layout[0]);
-    render_session_list(frame, app, layout[1]);
-    render_preview(frame, app, layout[2]);
-    render_status_bar(frame, app, layout[3]);
-    render_footer(frame, app, layout[4]);
+    // Center area: session list (30%) + preview (70%) side by side
+    let center = Layout::horizontal([
+        Constraint::Percentage(30), // Session list
+        Constraint::Percentage(70), // Preview pane
+    ])
+    .split(outer[1]);
+
+    render_header(frame, app, outer[0]);
+    render_session_list(frame, app, center[0]);
+    app.preview_height = center[1].height;
+    render_preview(frame, app, center[1]);
+    render_status_bar(frame, app, outer[2]);
+    render_footer(frame, app, outer[3]);
 
     // Render modal overlays
     match &app.mode {
@@ -95,7 +98,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             );
         }
         Mode::Filter { input } => {
-            render_filter_bar(frame, input, layout[3]);
+            render_filter_bar(frame, input, outer[2]);
         }
         Mode::CreatePullRequest {
             title,
@@ -123,7 +126,7 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
     let current = app
         .current_session
         .as_ref()
-        .map(|s| format!(" attached: {} ", s))
+        .map(|s| format!(" 연결됨: {} ", s))
         .unwrap_or_default();
 
     let title = format!(
@@ -142,7 +145,9 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute scroll state values before borrowing for items
     let selected_index = app.compute_flat_list_index();
     let total_items = app.compute_total_list_items();
-    let visible_height = area.height as usize;
+    // Each session ListItem renders as 2 rows, so approximate visible item count
+    // by halving the pixel height. This keeps centering and max_offset correct.
+    let visible_height = (area.height as usize).max(2) / 2;
 
     // Take scroll_state out of app to avoid borrow conflicts
     // (items building borrows app immutably, scroll_state needs mutable access)
@@ -152,9 +157,9 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     if filtered.is_empty() {
         let empty_msg = if app.filter.is_empty() {
-            "No tmux sessions found. Press 'n' to create one."
+            "tmux 세션을 찾을 수 없습니다. 'n'을 눌러 새로 만드세요."
         } else {
-            "No sessions match the filter."
+            "필터와 일치하는 세션이 없습니다."
         };
         let paragraph = Paragraph::new(empty_msg)
             .style(Style::default().fg(Color::DarkGray))
@@ -264,7 +269,8 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
             vec![]
         };
 
-        let mut line_spans = vec![
+        // Line 1: marker + session name + status symbol/label
+        let line1 = Line::from(vec![
             Span::raw(format!(" {} ", marker)),
             Span::styled(
                 format!("{:<width$}", session.name, width = max_name_len),
@@ -277,12 +283,15 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
                 format!("{:<8}", status.label()),
                 Style::default().fg(status_color),
             ),
-            Span::raw("  "),
+        ]);
+
+        // Line 2: indented path + git info (branch + status)
+        let mut line2_spans = vec![
+            Span::raw("     "),
             Span::styled(session.display_path(), Style::default().fg(path_color)),
         ];
-        line_spans.extend(git_spans);
-
-        let line = Line::from(line_spans);
+        line2_spans.extend(git_spans);
+        let line2 = Line::from(line2_spans);
 
         let style = if is_selected {
             Style::default().bg(Color::DarkGray)
@@ -290,7 +299,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
             Style::default()
         };
 
-        items.push(ListItem::new(line).style(style));
+        items.push(ListItem::new(vec![line1, line2]).style(style));
 
         // Show expanded content when in action menu mode for this session
         if is_expanded {
@@ -323,21 +332,21 @@ fn render_expanded_session_content<'a>(
     let value_style = Style::default().fg(Color::White);
 
     // Session metadata row
-    let attached_str = if session.attached { "yes" } else { "no" };
+    let attached_str = if session.attached { "예" } else { "아니오" };
     let pane_count = session.panes.len();
 
     let meta_line = Line::from(vec![
         Span::raw("     "),
-        Span::styled("windows: ", label_style),
+        Span::styled("윈도우: ", label_style),
         Span::styled(format!("{}", session.window_count), value_style),
         Span::raw("  "),
-        Span::styled("panes: ", label_style),
+        Span::styled("패널: ", label_style),
         Span::styled(format!("{}", pane_count), value_style),
         Span::raw("  "),
-        Span::styled("uptime: ", label_style),
+        Span::styled("가동시간: ", label_style),
         Span::styled(session.duration(), value_style),
         Span::raw("  "),
-        Span::styled("attached: ", label_style),
+        Span::styled("연결됨: ", label_style),
         Span::styled(attached_str, value_style),
     ]);
     items.push(ListItem::new(meta_line));
@@ -346,7 +355,7 @@ fn render_expanded_session_content<'a>(
     if let Some(ref git) = session.git_context {
         let mut git_spans = vec![
             Span::raw("     "),
-            Span::styled("branch: ", label_style),
+            Span::styled("브랜치: ", label_style),
             Span::styled(&git.branch, Style::default().fg(Color::Cyan)),
         ];
 
@@ -372,20 +381,20 @@ fn render_expanded_session_content<'a>(
         // Show staged/unstaged status
         if git.has_staged {
             git_spans.push(Span::raw("  "));
-            git_spans.push(Span::styled("staged: ", label_style));
-            git_spans.push(Span::styled("yes", Style::default().fg(Color::Green)));
+            git_spans.push(Span::styled("스테이지: ", label_style));
+            git_spans.push(Span::styled("예", Style::default().fg(Color::Green)));
         }
 
         if git.has_unstaged {
             git_spans.push(Span::raw("  "));
-            git_spans.push(Span::styled("unstaged: ", label_style));
-            git_spans.push(Span::styled("yes", Style::default().fg(Color::Yellow)));
+            git_spans.push(Span::styled("미스테이지: ", label_style));
+            git_spans.push(Span::styled("예", Style::default().fg(Color::Yellow)));
         }
 
         if git.is_worktree {
             git_spans.push(Span::raw("  "));
-            git_spans.push(Span::styled("worktree: ", label_style));
-            git_spans.push(Span::styled("yes", Style::default().fg(Color::Magenta)));
+            git_spans.push(Span::styled("워크트리: ", label_style));
+            git_spans.push(Span::styled("예", Style::default().fg(Color::Magenta)));
         }
 
         items.push(ListItem::new(Line::from(git_spans)));
@@ -404,9 +413,9 @@ fn render_expanded_session_content<'a>(
 
             // State with color
             let (state_text, state_color) = match pr_info.state.as_str() {
-                "OPEN" => ("open", Color::Green),
-                "CLOSED" => ("closed", Color::Red),
-                "MERGED" => ("merged", Color::Magenta),
+                "OPEN" => ("열림", Color::Green),
+                "CLOSED" => ("닫힘", Color::Red),
+                "MERGED" => ("병합됨", Color::Magenta),
                 _ => (pr_info.state.as_str(), Color::Gray),
             };
             pr_spans.push(Span::styled(state_text, Style::default().fg(state_color)));
@@ -415,9 +424,9 @@ fn render_expanded_session_content<'a>(
             if pr_info.state == "OPEN" {
                 pr_spans.push(Span::raw("  "));
                 let (merge_text, merge_color) = match pr_info.mergeable.as_str() {
-                    "MERGEABLE" => ("ready to merge", Color::Green),
-                    "CONFLICTING" => ("has conflicts", Color::Red),
-                    _ => ("merge status unknown", Color::Yellow),
+                    "MERGEABLE" => ("병합 가능", Color::Green),
+                    "CONFLICTING" => ("충돌 있음", Color::Red),
+                    _ => ("병합 상태 알수없음", Color::Yellow),
                 };
                 pr_spans.push(Span::styled(merge_text, Style::default().fg(merge_color)));
             }
@@ -459,41 +468,22 @@ fn render_preview(frame: &mut Frame, app: &App, area: Rect) {
     // Clear the entire preview area first to prevent stale content
     frame.render_widget(Clear, area);
 
-    // Draw separator lines at top and bottom
-    let separator = "─".repeat(area.width as usize);
+    // Use a Block with left border to visually separate from session list
+    let block = Block::default()
+        .borders(Borders::LEFT)
+        .border_style(Style::default().fg(Color::DarkGray))
+        .title(" 미리보기 ")
+        .title_style(Style::default().fg(Color::Cyan));
 
-    let top_sep_area = Rect {
-        x: area.x,
-        y: area.y,
-        width: area.width,
-        height: 1,
-    };
-    let top_sep = Paragraph::new(separator.clone()).style(Style::default().fg(Color::DarkGray));
-    frame.render_widget(top_sep, top_sep_area);
-
-    let bottom_sep_area = Rect {
-        x: area.x,
-        y: area.y + area.height.saturating_sub(1),
-        width: area.width,
-        height: 1,
-    };
-    let bottom_sep = Paragraph::new(separator).style(Style::default().fg(Color::White));
-    frame.render_widget(bottom_sep, bottom_sep_area);
-
-    // Content area (between separators)
-    let content_area = Rect {
-        x: area.x,
-        y: area.y + 1,
-        width: area.width,
-        height: area.height.saturating_sub(2),
-    };
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
 
     let content = match &app.preview_content {
         Some(text) if !text.is_empty() => text,
         _ => {
-            let msg = Paragraph::new("  No preview available")
+            let msg = Paragraph::new("  미리보기 없음")
                 .style(Style::default().fg(Color::DarkGray));
-            frame.render_widget(msg, content_area);
+            frame.render_widget(msg, inner);
             return;
         }
     };
@@ -508,32 +498,32 @@ fn render_preview(frame: &mut Frame, app: &App, area: Rect) {
     };
 
     // Take only the last N lines that fit in the content area
-    let available_lines = content_area.height as usize;
+    let available_lines = inner.height as usize;
     let total_lines = styled_text.lines.len();
     let start = total_lines.saturating_sub(available_lines);
     let visible_lines: Vec<Line> = styled_text.lines.into_iter().skip(start).collect();
 
     let preview = Paragraph::new(visible_lines);
-    frame.render_widget(preview, content_area);
+    frame.render_widget(preview, inner);
 }
 
 fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
     let (working, waiting, _idle) = app.status_counts();
     let total = app.sessions.len();
 
-    let mut parts = vec![format!("{} sessions", total)];
+    let mut parts = vec![format!("{}개 세션", total)];
 
     if working > 0 {
-        parts.push(format!("{} working", working));
+        parts.push(format!("{}개 작업중", working));
     }
     if waiting > 0 {
-        parts.push(format!("{} awaiting input", waiting));
+        parts.push(format!("{}개 입력대기", waiting));
     }
 
     let status = parts.join(" │ ");
 
     let filter_info = if !app.filter.is_empty() {
-        format!(" │ filter: \"{}\"", app.filter)
+        format!(" │ 필터: \"{}\"", app.filter)
     } else {
         String::new()
     };
@@ -548,17 +538,17 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let hints = match app.mode {
         Mode::Normal => {
-            "  ? help  jk navigate  l actions  ⏎ switch  n new  K kill  R reload  / filter  q quit"
+            "  ? 도움말  jk 이동  l 액션  ⏎ 전환  n 새세션  K 종료  R 새로고침  / 필터  q 나가기"
         }
-        Mode::ActionMenu => "  jk navigate  ⏎/l select  h/esc back  q quit",
-        Mode::Filter { .. } => "  ⏎ apply  esc cancel",
-        Mode::ConfirmAction => "  y/⏎ confirm  n/esc cancel",
-        Mode::NewSession { .. } => "  ⏎ create  tab switch  ↑↓ select  → accept  esc cancel",
-        Mode::Rename { .. } => "  ⏎ confirm  esc cancel",
-        Mode::Commit { .. } => "  ⏎ commit  esc cancel",
-        Mode::NewWorktree { .. } => "  ⏎ create  tab switch  ↑↓ select  → accept  esc cancel",
-        Mode::CreatePullRequest { .. } => "  ⏎ create PR  tab switch  esc cancel",
-        Mode::Help => "  q close",
+        Mode::ActionMenu => "  jk 이동  ⏎/l 선택  h/esc 뒤로  q 나가기",
+        Mode::Filter { .. } => "  ⏎ 적용  esc 취소",
+        Mode::ConfirmAction => "  y/⏎ 확인  n/esc 취소",
+        Mode::NewSession { .. } => "  ⏎ 생성  tab 전환  ↑↓ 선택  → 수락  esc 취소",
+        Mode::Rename { .. } => "  ⏎ 확인  esc 취소",
+        Mode::Commit { .. } => "  ⏎ 커밋  esc 취소",
+        Mode::NewWorktree { .. } => "  ⏎ 생성  tab 전환  ↑↓ 선택  → 수락  esc 취소",
+        Mode::CreatePullRequest { .. } => "  ⏎ PR 생성  tab 전환  esc 취소",
+        Mode::Help => "  q 닫기",
     };
 
     let footer = Paragraph::new(hints).style(Style::default().fg(Color::DarkGray));

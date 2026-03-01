@@ -12,43 +12,43 @@ pub fn render_help(frame: &mut Frame) {
     let area = centered_rect(60, 21, frame.area());
 
     let block = Block::default()
-        .title(" Help ")
+        .title(" 도움말 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
     let help_text = vec![
         Line::from(Span::styled(
-            "Navigation",
+            "탐색",
             Style::default().add_modifier(Modifier::BOLD),
         )),
-        Line::raw("  j / ↓       Move down"),
-        Line::raw("  k / ↑       Move up"),
-        Line::raw("  l / →       Open action menu"),
-        Line::raw("  Enter       Switch to session"),
+        Line::raw("  j / ↓       아래로 이동"),
+        Line::raw("  k / ↑       위로 이동"),
+        Line::raw("  l / →       액션 메뉴 열기"),
+        Line::raw("  Enter       세션으로 전환"),
         Line::raw(""),
         Line::from(Span::styled(
-            "Actions",
+            "동작",
             Style::default().add_modifier(Modifier::BOLD),
         )),
-        Line::raw("  n           New session"),
-        Line::raw("  K           Kill session"),
-        Line::raw("  r           Rename session"),
-        Line::raw("  /           Filter sessions"),
-        Line::raw("  R           Refresh list"),
+        Line::raw("  n           새 세션"),
+        Line::raw("  K           세션 종료"),
+        Line::raw("  r           세션 이름 변경"),
+        Line::raw("  /           세션 필터"),
+        Line::raw("  R           목록 새로고침"),
         Line::raw(""),
         Line::from(Span::styled(
-            "Action Menu",
+            "액션 메뉴",
             Style::default().add_modifier(Modifier::BOLD),
         )),
-        Line::raw("  h / ←       Go back"),
-        Line::raw("  Enter       Execute action"),
+        Line::raw("  h / ←       뒤로 가기"),
+        Line::raw("  Enter       액션 실행"),
         Line::raw(""),
         Line::from(Span::styled(
-            "Other",
+            "기타",
             Style::default().add_modifier(Modifier::BOLD),
         )),
-        Line::raw("  ?           Show this help"),
-        Line::raw("  q / Esc     Quit"),
+        Line::raw("  ?           이 도움말 표시"),
+        Line::raw("  q / Esc     종료"),
     ];
 
     let paragraph = Paragraph::new(help_text)

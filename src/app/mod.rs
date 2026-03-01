@@ -54,6 +54,8 @@ pub struct App {
     pub pr_info: Option<PullRequestInfo>,
     /// Scroll state for the session list
     pub scroll_state: ScrollState,
+    /// Last known preview area height (set during rendering)
+    pub preview_height: u16,
 }
 
 impl App {
@@ -81,6 +83,7 @@ impl App {
             pending_action: None,
             pr_info: None,
             scroll_state: ScrollState::new(),
+            preview_height: 0,
         };
 
         app.update_preview();
@@ -89,7 +92,11 @@ impl App {
 
     /// Update the preview content for the currently selected session
     pub fn update_preview(&mut self) {
-        const PREVIEW_LINES: usize = 15;
+        let lines = if self.preview_height > 0 {
+            self.preview_height as usize
+        } else {
+            15
+        };
 
         let pane_id = self.selected_session().and_then(|session| {
             // Prefer Claude pane, fall back to first pane
@@ -101,7 +108,7 @@ impl App {
 
         self.preview_content = pane_id.and_then(|id| {
             // Don't strip empty lines - preserve visual layout for preview
-            Tmux::capture_pane(&id, PREVIEW_LINES, false).ok()
+            Tmux::capture_pane(&id, lines, false).ok()
         });
     }
 
@@ -115,7 +122,7 @@ impl App {
     pub fn refresh(&mut self) {
         self.clear_messages();
         if self.refresh_sessions() {
-            self.message = Some("Refreshed".to_string());
+            self.message = Some("새로고침 완료".to_string());
         }
     }
 
@@ -132,7 +139,7 @@ impl App {
                 true
             }
             Err(e) => {
-                self.error = Some(format!("Failed to refresh: {}", e));
+                self.error = Some(format!("새로고침 실패: {}", e));
                 false
             }
         }
@@ -192,7 +199,7 @@ impl App {
                     self.should_quit = true;
                 }
                 Err(e) => {
-                    self.error = Some(format!("Failed to switch: {}", e));
+                    self.error = Some(format!("전환 실패: {}", e));
                 }
             }
         }
@@ -367,7 +374,7 @@ impl App {
             SessionAction::SwitchTo => {
                 match Tmux::switch_to_session(&session_name) {
                     Ok(_) => self.should_quit = true,
-                    Err(e) => self.error = Some(format!("Failed to switch: {}", e)),
+                    Err(e) => self.error = Some(format!("전환 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -382,9 +389,9 @@ impl App {
                 match GitContext::stage_all(&path) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Staged all changes".to_string());
+                        self.message = Some("모든 변경사항 스테이지 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Stage failed: {}", e)),
+                    Err(e) => self.error = Some(format!("스테이지 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -398,9 +405,9 @@ impl App {
                 match GitContext::push(&path) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Pushed to remote".to_string());
+                        self.message = Some("리모트에 푸시 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Push failed: {}", e)),
+                    Err(e) => self.error = Some(format!("푸시 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -409,9 +416,9 @@ impl App {
                 match GitContext::push_set_upstream(&path) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Pushed and set upstream".to_string());
+                        self.message = Some("업스트림 설정 및 푸시 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Push failed: {}", e)),
+                    Err(e) => self.error = Some(format!("푸시 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -420,9 +427,9 @@ impl App {
                 match GitContext::fetch(&path) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Fetched from remote".to_string());
+                        self.message = Some("리모트에서 패치 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Fetch failed: {}", e)),
+                    Err(e) => self.error = Some(format!("패치 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -431,9 +438,9 @@ impl App {
                 match GitContext::pull(&path) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Pulled from remote".to_string());
+                        self.message = Some("리모트에서 풀 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Pull failed: {}", e)),
+                    Err(e) => self.error = Some(format!("풀 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -444,9 +451,9 @@ impl App {
                 let path = session.working_directory.clone();
                 match git::view_pull_request(&path) {
                     Ok(_) => {
-                        self.message = Some("Opened PR in browser".to_string());
+                        self.message = Some("브라우저에서 PR 열기 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Failed to open PR: {}", e)),
+                    Err(e) => self.error = Some(format!("PR 열기 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -454,9 +461,9 @@ impl App {
                 let path = session.working_directory.clone();
                 match git::close_pull_request(&path) {
                     Ok(_) => {
-                        self.message = Some("Closed pull request".to_string());
+                        self.message = Some("풀 리퀘스트 닫기 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Failed to close PR: {}", e)),
+                    Err(e) => self.error = Some(format!("PR 닫기 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -465,9 +472,9 @@ impl App {
                 match git::merge_pull_request(&path, false) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Merged pull request".to_string());
+                        self.message = Some("풀 리퀘스트 병합 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Failed to merge PR: {}", e)),
+                    Err(e) => self.error = Some(format!("PR 병합 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -497,21 +504,21 @@ impl App {
                             Ok(_) => {
                                 self.refresh_sessions();
                                 self.message = Some(if is_worktree {
-                                    "Merged PR, removed worktree, and closed session".to_string()
+                                    "PR 병합, 워크트리 삭제 및 세션 종료 완료".to_string()
                                 } else {
-                                    "Merged PR and closed session".to_string()
+                                    "PR 병합 및 세션 종료 완료".to_string()
                                 });
                             }
                             Err(e) => {
                                 self.refresh_sessions();
                                 self.error = Some(format!(
-                                    "PR merged but failed to kill session: {}",
+                                    "PR 병합됨, 세션 종료 실패: {}",
                                     e
                                 ));
                             }
                         }
                     }
-                    Err(e) => self.error = Some(format!("Failed to merge PR: {}", e)),
+                    Err(e) => self.error = Some(format!("PR 병합 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -519,9 +526,9 @@ impl App {
                 match Tmux::kill_session(&session_name) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some(format!("Killed session '{}'", session_name));
+                        self.message = Some(format!("세션 '{}' 종료 완료", session_name));
                     }
-                    Err(e) => self.error = Some(format!("Failed to kill: {}", e)),
+                    Err(e) => self.error = Some(format!("종료 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -538,20 +545,20 @@ impl App {
                             Ok(_) => {
                                 self.refresh_sessions();
                                 self.message = Some(format!(
-                                    "Deleted worktree and killed session '{}'",
+                                    "워크트리 삭제 및 세션 '{}' 종료 완료",
                                     session_name
                                 ));
                             }
                             Err(e) => {
                                 self.refresh_sessions();
                                 self.error = Some(format!(
-                                    "Worktree deleted but failed to kill session: {}",
+                                    "워크트리 삭제됨, 세션 종료 실패: {}",
                                     e
                                 ));
                             }
                         }
                     }
-                    Err(e) => self.error = Some(format!("Failed to delete worktree: {}", e)),
+                    Err(e) => self.error = Some(format!("워크트리 삭제 실패: {}", e)),
                 }
                 self.mode = Mode::Normal;
             }
@@ -591,10 +598,10 @@ impl App {
             match Tmux::rename_session(&old, &new) {
                 Ok(_) => {
                     self.refresh_sessions();
-                    self.message = Some(format!("Renamed '{}' to '{}'", old, new));
+                    self.message = Some(format!("'{}' → '{}' 이름 변경 완료", old, new));
                 }
                 Err(e) => {
-                    self.error = Some(format!("Failed to rename: {}", e));
+                    self.error = Some(format!("이름 변경 실패: {}", e));
                 }
             }
         }
@@ -609,7 +616,7 @@ impl App {
     pub fn confirm_commit(&mut self) {
         if let Mode::Commit { ref message } = self.mode {
             if message.trim().is_empty() {
-                self.error = Some("Commit message cannot be empty".to_string());
+                self.error = Some("커밋 메시지를 입력하세요".to_string());
                 self.mode = Mode::Normal;
                 return;
             }
@@ -620,9 +627,9 @@ impl App {
                 match GitContext::commit(&path, &msg) {
                     Ok(_) => {
                         self.refresh_sessions();
-                        self.message = Some("Committed changes".to_string());
+                        self.message = Some("커밋 완료".to_string());
                     }
-                    Err(e) => self.error = Some(format!("Commit failed: {}", e)),
+                    Err(e) => self.error = Some(format!("커밋 실패: {}", e)),
                 }
             }
         }
@@ -636,18 +643,13 @@ impl App {
     /// Start the new session flow
     pub fn start_new_session(&mut self) {
         self.clear_messages();
-        // Default to current directory
-        let default_path = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| "~".to_string());
-
-        // Get initial path suggestions
+        let default_path = "~/projects/".to_string();
         let completion = crate::completion::complete_path(&default_path);
 
         self.mode = Mode::NewSession {
             name: String::new(),
             path: default_path,
-            field: NewSessionField::Name,
+            field: NewSessionField::Path,
             path_suggestions: completion.suggestions,
             path_selected: None,
         };
@@ -659,22 +661,32 @@ impl App {
             ref name, ref path, ..
         } = self.mode
         {
-            if name.is_empty() {
-                self.error = Some("Session name cannot be empty".to_string());
+            let session_name = if name.is_empty() {
+                let clean_path = path.trim_end_matches('/');
+                clean_path
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("new-session")
+                    .to_string()
+            } else {
+                name.clone()
+            };
+
+            if session_name.is_empty() {
+                self.error = Some("세션 이름을 입력하세요".to_string());
                 self.mode = Mode::Normal;
                 return;
             }
 
-            let session_name = name.clone();
             let session_path = expand_path(path);
 
             match Tmux::new_session(&session_name, &session_path, start_claude) {
                 Ok(_) => {
                     self.refresh_sessions();
-                    self.message = Some(format!("Created session '{}'", session_name));
+                    self.message = Some(format!("세션 '{}' 생성 완료", session_name));
                 }
                 Err(e) => {
-                    self.error = Some(format!("Failed to create session: {}", e));
+                    self.error = Some(format!("세션 생성 실패: {}", e));
                 }
             }
         }
@@ -709,7 +721,7 @@ impl App {
         let all_branches = match GitContext::list_branches(&source_repo) {
             Ok(branches) => branches,
             Err(e) => {
-                self.error = Some(format!("Failed to list branches: {}", e));
+                self.error = Some(format!("브랜치 목록 조회 실패: {}", e));
                 return;
             }
         };
@@ -832,19 +844,19 @@ impl App {
 
         // Validate inputs
         if branch_input.is_empty() && selected_branch.is_none() {
-            self.error = Some("Branch name cannot be empty".to_string());
+            self.error = Some("브랜치 이름을 입력하세요".to_string());
             self.mode = Mode::Normal;
             return;
         }
 
         if session_name.is_empty() {
-            self.error = Some("Session name cannot be empty".to_string());
+            self.error = Some("세션 이름을 입력하세요".to_string());
             self.mode = Mode::Normal;
             return;
         }
 
         if worktree_path.is_empty() {
-            self.error = Some("Worktree path cannot be empty".to_string());
+            self.error = Some("워크트리 경로를 입력하세요".to_string());
             self.mode = Mode::Normal;
             return;
         }
@@ -894,20 +906,20 @@ impl App {
                     Ok(_) => {
                         self.refresh_sessions();
                         self.message = Some(format!(
-                            "Created worktree '{}' and session '{}'",
+                            "워크트리 '{}' 및 세션 '{}' 생성 완료",
                             branch_name, session_name
                         ));
                     }
                     Err(e) => {
                         self.error = Some(format!(
-                            "Worktree created but session creation failed: {}",
+                            "워크트리 생성됨, 세션 생성 실패: {}",
                             e
                         ));
                     }
                 }
             }
             Err(e) => {
-                self.error = Some(format!("Failed to create worktree: {}", e));
+                self.error = Some(format!("워크트리 생성 실패: {}", e));
             }
         }
 
@@ -952,7 +964,7 @@ impl App {
         };
 
         if title.trim().is_empty() {
-            self.error = Some("PR title cannot be empty".to_string());
+            self.error = Some("PR 제목을 입력하세요".to_string());
             self.mode = Mode::Normal;
             return;
         }
@@ -961,10 +973,10 @@ impl App {
             let path = session.working_directory.clone();
             match git::create_pull_request(&path, &title, &body, &base_branch) {
                 Ok(result) => {
-                    self.message = Some(format!("Created PR: {}", result.url));
+                    self.message = Some(format!("PR 생성 완료: {}", result.url));
                 }
                 Err(e) => {
-                    self.error = Some(format!("Failed to create PR: {}", e));
+                    self.error = Some(format!("PR 생성 실패: {}", e));
                 }
             }
         }
@@ -1288,10 +1300,10 @@ impl App {
 
         match self.mode {
             Mode::ActionMenu => {
-                // Count items before selected session (1 row each)
+                // Count ListItems before selected session (1 ListItem each, even with 2-line display)
                 let mut index = self.selected;
 
-                // Add 1 for the selected session row itself
+                // Add 1 for the selected session ListItem itself
                 index += 1;
 
                 // Add 1 for metadata row (always present when expanded)
@@ -1319,7 +1331,7 @@ impl App {
                 index
             }
             _ => {
-                // In non-ActionMenu modes, just the session index
+                // In non-ActionMenu modes, just the session ListItem index
                 self.selected
             }
         }
@@ -1336,7 +1348,7 @@ impl App {
 
         match self.mode {
             Mode::ActionMenu => {
-                // Base: one row per session
+                // Base: one ListItem per session (each renders as 2 lines)
                 let mut total = filtered_count;
 
                 // Add expanded content for selected session:

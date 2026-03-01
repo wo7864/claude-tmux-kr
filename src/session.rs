@@ -30,10 +30,10 @@ impl ClaudeCodeStatus {
     /// Returns the display label for this status
     pub fn label(&self) -> &'static str {
         match self {
-            ClaudeCodeStatus::Idle => "idle",
-            ClaudeCodeStatus::Working => "working",
-            ClaudeCodeStatus::WaitingInput => "input",
-            ClaudeCodeStatus::Unknown => "unknown",
+            ClaudeCodeStatus::Idle => "대기",
+            ClaudeCodeStatus::Working => "작업중",
+            ClaudeCodeStatus::WaitingInput => "입력대기",
+            ClaudeCodeStatus::Unknown => "알수없음",
         }
     }
 }

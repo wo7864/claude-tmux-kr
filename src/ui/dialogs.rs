@@ -38,20 +38,20 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             let area = centered_rect(55, dialog_height, frame.area());
 
             let block = Block::default()
-                .title(" Confirm ")
+                .title(" 확인 ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Red));
 
             let mut lines = vec![
-                Line::from(format!("Kill session '{}'", session_name)),
-                Line::from("AND delete worktree at:"),
+                Line::from(format!("세션 '{}' 종료", session_name)),
+                Line::from("및 워크트리 삭제:"),
                 Line::styled(
                     format!("  {}", worktree_path),
                     Style::default().fg(Color::Yellow),
                 ),
                 Line::raw(""),
                 Line::styled(
-                    "⚠ This will permanently delete the directory!",
+                    "⚠ 이 디렉토리가 영구 삭제됩니다!",
                     Style::default()
                         .fg(Color::Red)
                         .add_modifier(Modifier::BOLD),
@@ -60,7 +60,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
 
             if is_current_session {
                 lines.push(Line::styled(
-                    "⚠ This is your current session - tmux will exit!",
+                    "⚠ 현재 세션입니다 - tmux가 종료됩니다!",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -68,7 +68,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             }
 
             lines.push(Line::raw(""));
-            lines.push(Line::from("[Y]es  [n]o"));
+            lines.push(Line::from("[Y]예  [n]아니오"));
 
             let paragraph = Paragraph::new(Text::from(lines))
                 .block(block)
@@ -82,11 +82,11 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             let area = centered_rect(50, 5, frame.area());
 
             let block = Block::default()
-                .title(" Close Pull Request ")
+                .title(" 풀 리퀘스트 닫기 ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Yellow));
 
-            let text = "Close this pull request without merging?\n\n[Y]es  [n]o";
+            let text = "병합하지 않고 풀 리퀘스트를 닫으시겠습니까?\n\n[Y]예  [n]아니오";
             let paragraph = Paragraph::new(text)
                 .block(block)
                 .alignment(Alignment::Center)
@@ -99,11 +99,11 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             let area = centered_rect(50, 5, frame.area());
 
             let block = Block::default()
-                .title(" Merge Pull Request ")
+                .title(" 풀 리퀘스트 병합 ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Green));
 
-            let text = "Merge this pull request?\n\n[Y]es  [n]o";
+            let text = "이 풀 리퀘스트를 병합하시겠습니까?\n\n[Y]예  [n]아니오";
             let paragraph = Paragraph::new(text)
                 .block(block)
                 .alignment(Alignment::Center)
@@ -117,34 +117,34 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             let area = centered_rect(58, dialog_height, frame.area());
 
             let block = Block::default()
-                .title(" Merge PR + Close ")
+                .title(" PR 병합 + 종료 ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Yellow));
 
             let mut lines = vec![
-                Line::from("This will:"),
+                Line::from("다음을 수행합니다:"),
                 Line::styled(
-                    "  • Merge the pull request",
+                    "  • 풀 리퀘스트 병합",
                     Style::default().fg(Color::Green),
                 ),
             ];
 
             if is_worktree {
                 lines.push(Line::styled(
-                    "  • Remove the local worktree",
+                    "  • 로컬 워크트리 삭제",
                     Style::default().fg(Color::Red),
                 ));
             }
 
             lines.push(Line::styled(
-                format!("  • Kill session '{}'", session_name),
+                format!("  • 세션 '{}' 종료", session_name),
                 Style::default().fg(Color::Red),
             ));
 
             if is_current_session {
                 lines.push(Line::raw(""));
                 lines.push(Line::styled(
-                    "⚠ This is your current session - tmux will exit!",
+                    "⚠ 현재 세션입니다 - tmux가 종료됩니다!",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -152,7 +152,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             }
 
             lines.push(Line::raw(""));
-            lines.push(Line::from("[Y]es  [n]o"));
+            lines.push(Line::from("[Y]예  [n]아니오"));
 
             let paragraph = Paragraph::new(Text::from(lines))
                 .block(block)
@@ -171,7 +171,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             let area = centered_rect(55, dialog_height, frame.area());
 
             let block = Block::default()
-                .title(" Confirm ")
+                .title(" 확인 ")
                 .borders(Borders::ALL)
                 .border_style(Style::default().fg(Color::Red));
 
@@ -184,7 +184,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             if show_exit_warning {
                 lines.push(Line::raw(""));
                 lines.push(Line::styled(
-                    "⚠ This is your current session - tmux will exit!",
+                    "⚠ 현재 세션입니다 - tmux가 종료됩니다!",
                     Style::default()
                         .fg(Color::Yellow)
                         .add_modifier(Modifier::BOLD),
@@ -192,7 +192,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
             }
 
             lines.push(Line::raw(""));
-            lines.push(Line::from("[Y]es  [n]o"));
+            lines.push(Line::from("[Y]예  [n]아니오"));
 
             let paragraph = Paragraph::new(Text::from(lines))
                 .block(block)
@@ -230,7 +230,7 @@ pub fn render_new_session_dialog(
     let area = centered_rect(60, dialog_height, frame.area());
 
     let block = Block::default()
-        .title(" New Session ")
+        .title(" 새 세션 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
@@ -252,16 +252,26 @@ pub fn render_new_session_dialog(
 
     let mut lines = Vec::new();
 
-    // Name field
-    lines.push(Line::from(vec![
-        Span::styled("Name: ", name_style),
+    // Name field with auto-generation hint
+    let mut name_spans = vec![
+        Span::styled("이름: ", name_style),
         Span::raw(name),
-        if field == NewSessionField::Name {
-            Span::raw("_")
-        } else {
-            Span::raw("")
-        },
-    ]));
+    ];
+    if field == NewSessionField::Name {
+        name_spans.push(Span::raw("_"));
+    }
+    if name.is_empty() && !path.is_empty() {
+        let clean_path = path.trim_end_matches('/');
+        if let Some(folder_name) = clean_path.rsplit('/').next() {
+            if !folder_name.is_empty() {
+                name_spans.push(Span::styled(
+                    format!(" (자동: {})", folder_name),
+                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                ));
+            }
+        }
+    }
+    lines.push(Line::from(name_spans));
 
     lines.push(Line::raw(""));
 
@@ -273,7 +283,7 @@ pub fn render_new_session_dialog(
     };
 
     let mut path_spans = vec![
-        Span::styled("Path: ", path_style),
+        Span::styled("경로: ", path_style),
         Span::styled(path, Style::default().fg(Color::Yellow)),
     ];
 
@@ -316,7 +326,7 @@ pub fn render_new_session_dialog(
 
         if path_suggestions.len() > 5 {
             lines.push(Line::styled(
-                format!("      ... and {} more", path_suggestions.len() - 5),
+                format!("      ... 외 {}개", path_suggestions.len() - 5),
                 Style::default().fg(Color::DarkGray),
             ));
         }
@@ -329,7 +339,7 @@ pub fn render_new_session_dialog(
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "Tab switch  ↑↓ select  → accept  Enter create  Esc cancel",
+        "↑↓ 선택  → 진입  Tab 전환  Enter 생성  Esc 취소",
         Style::default().fg(Color::DarkGray),
     ));
 
@@ -346,19 +356,19 @@ pub fn render_commit_dialog(frame: &mut Frame, message: &str) {
     let area = centered_rect(60, 6, frame.area());
 
     let block = Block::default()
-        .title(" Commit ")
+        .title(" 커밋 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
     let text = Text::from(vec![
         Line::from(vec![
-            Span::raw("Message: "),
+            Span::raw("메시지: "),
             Span::styled(message, Style::default().fg(Color::Yellow)),
             Span::raw("_"),
         ]),
         Line::raw(""),
         Line::styled(
-            "Press Enter to commit",
+            "Enter를 눌러 커밋",
             Style::default().fg(Color::DarkGray),
         ),
     ]);
@@ -381,7 +391,7 @@ pub fn render_create_pr_dialog(
     let area = centered_rect(65, 12, frame.area());
 
     let block = Block::default()
-        .title(" Create Pull Request ")
+        .title(" 풀 리퀘스트 생성 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Green));
 
@@ -413,15 +423,15 @@ pub fn render_create_pr_dialog(
 
     let text = Text::from(vec![
         Line::from(vec![
-            Span::styled("Title: ", title_style),
+            Span::styled("제목:  ", title_style),
             Span::styled(title, Style::default().fg(Color::Yellow)),
             Span::raw(cursor(field == CreatePullRequestField::Title)),
         ]),
         Line::raw(""),
         Line::from(vec![
-            Span::styled("Body:  ", body_style),
+            Span::styled("본문:  ", body_style),
             Span::styled(
-                if body.is_empty() { "(optional)" } else { body },
+                if body.is_empty() { "(선택사항)" } else { body },
                 if body.is_empty() {
                     Style::default().fg(Color::DarkGray)
                 } else {
@@ -432,13 +442,13 @@ pub fn render_create_pr_dialog(
         ]),
         Line::raw(""),
         Line::from(vec![
-            Span::styled("Base:  ", base_style),
+            Span::styled("베이스:", base_style),
             Span::styled(base_branch, Style::default().fg(Color::Cyan)),
             Span::raw(cursor(field == CreatePullRequestField::BaseBranch)),
         ]),
         Line::raw(""),
         Line::styled(
-            "[Tab] Next field  [Enter] Create PR  [Esc] Cancel",
+            "[Tab] 다음 필드  [Enter] PR 생성  [Esc] 취소",
             Style::default().fg(Color::DarkGray),
         ),
     ]);
@@ -500,7 +510,7 @@ pub fn render_new_worktree_dialog(
     let area = centered_rect(65, dialog_height, frame.area());
 
     let block = Block::default()
-        .title(" New Session from Worktree ")
+        .title(" 워크트리에서 새 세션 ")
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
@@ -517,9 +527,9 @@ pub fn render_new_worktree_dialog(
     };
 
     let branch_indicator = if is_new_branch {
-        Span::styled(" (new)", Style::default().fg(Color::Green))
+        Span::styled(" (신규)", Style::default().fg(Color::Green))
     } else if selected_branch.is_some() {
-        Span::styled(" (existing)", Style::default().fg(Color::Cyan))
+        Span::styled(" (기존)", Style::default().fg(Color::Cyan))
     } else {
         Span::raw("")
     };
@@ -532,7 +542,7 @@ pub fn render_new_worktree_dialog(
     };
 
     let mut branch_spans = vec![
-        Span::styled("Branch:  ", branch_style),
+        Span::styled("브랜치:  ", branch_style),
         Span::styled(branch_input, Style::default().fg(Color::Yellow)),
     ];
 
@@ -580,7 +590,7 @@ pub fn render_new_worktree_dialog(
 
         if filtered_branches.len() > 5 {
             lines.push(Line::styled(
-                format!("         ... and {} more", filtered_branches.len() - 5),
+                format!("         ... 외 {}개", filtered_branches.len() - 5),
                 Style::default().fg(Color::DarkGray),
             ));
         }
@@ -610,7 +620,7 @@ pub fn render_new_worktree_dialog(
     };
 
     let mut path_spans = vec![
-        Span::styled("Path:    ", path_style),
+        Span::styled("경로:    ", path_style),
         Span::styled(worktree_path, Style::default().fg(Color::Yellow)),
     ];
 
@@ -657,7 +667,7 @@ pub fn render_new_worktree_dialog(
 
         if path_suggestions.len() > 5 {
             lines.push(Line::styled(
-                format!("         ... and {} more", path_suggestions.len() - 5),
+                format!("         ... 외 {}개", path_suggestions.len() - 5),
                 Style::default().fg(Color::DarkGray),
             ));
         }
@@ -680,7 +690,7 @@ pub fn render_new_worktree_dialog(
     };
 
     lines.push(Line::from(vec![
-        Span::styled("Session: ", session_style),
+        Span::styled("세션:    ", session_style),
         Span::styled(session_name, Style::default().fg(Color::Yellow)),
         if field == NewWorktreeField::SessionName {
             Span::raw("_")
@@ -691,7 +701,7 @@ pub fn render_new_worktree_dialog(
 
     lines.push(Line::raw(""));
     lines.push(Line::styled(
-        "Tab switch  ↑↓ select  → accept  Enter create  Esc cancel",
+        "Tab 전환  ↑↓ 선택  → 수락  Enter 생성  Esc 취소",
         Style::default().fg(Color::DarkGray),
     ));
 
@@ -708,19 +718,19 @@ pub fn render_rename_dialog(frame: &mut Frame, old_name: &str, new_name: &str) {
     let area = centered_rect(50, 6, frame.area());
 
     let block = Block::default()
-        .title(format!(" Rename '{}' ", old_name))
+        .title(format!(" '{}' 이름 변경 ", old_name))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
     let text = Text::from(vec![
         Line::from(vec![
-            Span::raw("New name: "),
+            Span::raw("새 이름: "),
             Span::styled(new_name, Style::default().fg(Color::Yellow)),
             Span::raw("_"),
         ]),
         Line::raw(""),
         Line::styled(
-            "Press Enter to confirm",
+            "Enter를 눌러 확인",
             Style::default().fg(Color::DarkGray),
         ),
     ]);

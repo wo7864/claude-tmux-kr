@@ -107,22 +107,22 @@ impl SessionAction {
     /// Returns the display label for this action
     pub fn label(&self) -> &'static str {
         match self {
-            Self::SwitchTo => "Switch to session",
-            Self::Rename => "Rename session",
-            Self::NewWorktree => "New session from worktree",
-            Self::Stage => "Stage all changes",
-            Self::Commit => "Commit staged changes",
-            Self::Push => "Push to remote",
-            Self::PushSetUpstream => "Push and set upstream",
-            Self::Fetch => "Fetch from remote",
-            Self::Pull => "Pull from remote",
-            Self::CreatePullRequest => "Create pull request",
-            Self::ViewPullRequest => "View pull request",
-            Self::ClosePullRequest => "Close pull request",
-            Self::MergePullRequest => "Merge pull request",
-            Self::MergePullRequestAndClose => "Merge PR + close session",
-            Self::Kill => "Kill session",
-            Self::KillAndDeleteWorktree => "Kill session + delete worktree",
+            Self::SwitchTo => "세션으로 전환",
+            Self::Rename => "세션 이름 변경",
+            Self::NewWorktree => "워크트리에서 새 세션",
+            Self::Stage => "모든 변경사항 스테이지",
+            Self::Commit => "스테이지된 변경사항 커밋",
+            Self::Push => "리모트에 푸시",
+            Self::PushSetUpstream => "업스트림 설정 및 푸시",
+            Self::Fetch => "리모트에서 패치",
+            Self::Pull => "리모트에서 풀",
+            Self::CreatePullRequest => "풀 리퀘스트 생성",
+            Self::ViewPullRequest => "풀 리퀘스트 보기",
+            Self::ClosePullRequest => "풀 리퀘스트 닫기",
+            Self::MergePullRequest => "풀 리퀘스트 병합",
+            Self::MergePullRequestAndClose => "PR 병합 + 세션 종료",
+            Self::Kill => "세션 종료",
+            Self::KillAndDeleteWorktree => "세션 종료 + 워크트리 삭제",
         }
     }
 
