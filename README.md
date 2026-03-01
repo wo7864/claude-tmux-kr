@@ -146,6 +146,43 @@ claude-tmux/
 └── README.md
 ```
 
+## 원본과의 차이점
+
+이 Fork는 원본 [nielsgroen/claude-tmux](https://github.com/nielsgroen/claude-tmux)에 다음과 같은 변경을 적용했습니다.
+
+### UI 전체 한국어 번역
+
+모든 사용자 대면 텍스트를 한국어로 번역했습니다:
+- 상태 표시: `idle` → `대기`, `working` → `작업중`, `input` → `입력대기`, `unknown` → `알수없음`
+- 액션 메뉴: `Switch to session` → `세션으로 전환`, `Kill session` → `세션 종료` 등
+- 확인 다이얼로그, 도움말, 푸터 힌트, 에러/성공 메시지 등 전체
+- 세션 상세 정보: `windows` → `윈도우`, `branch` → `브랜치`, `staged` → `스테이지` 등
+
+### 레이아웃 변경 — 좌우 분할
+
+원본의 상하 배치(세션 목록 위, 미리보기 아래)를 **좌우 분할**(세션 목록 30%, 미리보기 70%)로 변경했습니다.
+미리보기 패널은 왼쪽 테두리와 제목(" 미리보기 ")이 표시됩니다.
+
+### 세션 목록 2줄 표시
+
+각 세션 항목을 2줄로 표시하도록 변경했습니다:
+- **1줄**: 상태 아이콘 + 세션 이름 + 상태 라벨
+- **2줄**: 작업 디렉토리 경로 + git 정보 (브랜치, 변경사항 등)
+
+### 동적 미리보기 높이
+
+미리보기 패널의 줄 수가 고정값(15줄)이 아니라 실제 렌더링 영역 높이에 맞춰 동적으로 조정됩니다.
+
+### 새 세션 생성 개선
+
+- 기본 경로가 현재 디렉토리 대신 `~/projects/`로 설정
+- 초기 포커스가 이름 필드가 아닌 경로 필드로 변경
+- 세션 이름을 비워두면 경로의 마지막 폴더명으로 자동 생성 (예: `~/projects/my-app/` → `my-app`)
+
+### Claude Code 실행 옵션
+
+새 세션에서 Claude Code를 시작할 때 `--dangerously-skip-permissions --teammate-mode tmux` 플래그가 자동으로 추가됩니다.
+
 ## 원본 저장소
 
 - 원본: [nielsgroen/claude-tmux](https://github.com/nielsgroen/claude-tmux)
