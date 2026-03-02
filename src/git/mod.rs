@@ -41,6 +41,8 @@ pub struct GitContext {
     pub ahead: usize,
     /// Commits behind upstream
     pub behind: usize,
+    /// Root path of the project (same for main repo and its worktrees)
+    pub repo_root: PathBuf,
 }
 
 impl GitContext {
@@ -120,6 +122,14 @@ impl GitContext {
             None
         };
 
+        // Compute project root: commondir's parent gives the repo root
+        // for both normal repos (.git -> parent) and worktrees (main .git -> parent)
+        let repo_root = repo
+            .commondir()
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| path.to_path_buf());
+
         // Check if any remote is configured
         let has_remote = repo.remotes().map(|r| !r.is_empty()).unwrap_or(false);
 
@@ -136,6 +146,7 @@ impl GitContext {
             has_remote,
             ahead,
             behind,
+            repo_root,
         })
     }
 }

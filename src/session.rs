@@ -76,6 +76,15 @@ pub struct Session {
 }
 
 impl Session {
+    /// Returns the project root path for grouping sessions.
+    /// Uses git repo root if available, otherwise working directory.
+    pub fn project_root(&self) -> PathBuf {
+        if let Some(ref git) = self.git_context {
+            return git.repo_root.clone();
+        }
+        self.working_directory.clone()
+    }
+
     /// Returns a shortened version of the working directory for display
     pub fn display_path(&self) -> String {
         let path = &self.working_directory;

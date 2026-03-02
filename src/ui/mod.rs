@@ -59,7 +59,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             field,
             path_suggestions,
             path_selected,
+            worktree_enabled,
+            branch_input,
+            selected_branch,
+            ..
         } => {
+            let filtered_branches = if *worktree_enabled {
+                app.filtered_new_session_branches()
+            } else {
+                vec![]
+            };
             dialogs::render_new_session_dialog(
                 frame,
                 name,
@@ -67,6 +76,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 *field,
                 path_suggestions,
                 *path_selected,
+                *worktree_enabled,
+                branch_input,
+                &filtered_branches,
+                *selected_branch,
             );
         }
         Mode::Rename { old_name, new_name } => {
@@ -99,6 +112,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         }
         Mode::Filter { input } => {
             render_filter_bar(frame, input, outer[2]);
+        }
+        Mode::Search { input } => {
+            render_search_bar(frame, input, outer[2]);
         }
         Mode::CreatePullRequest {
             title,
@@ -142,6 +158,182 @@ fn render_header(frame: &mut Frame, app: &App, area: Rect) {
 }
 
 fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
+    if app.grouped_view.enabled && !matches!(app.mode, Mode::ActionMenu) {
+        render_grouped_session_list(frame, app, area);
+    } else {
+        render_flat_session_list(frame, app, area);
+    }
+}
+
+fn render_grouped_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
+    let selected_index = app.compute_flat_list_index();
+    let total_items = app.compute_total_list_items();
+    let visible_height = (area.height as usize).max(1);
+
+    let mut scroll_state = std::mem::take(&mut app.scroll_state);
+    let filtered = app.filtered_sessions();
+
+    if filtered.is_empty() {
+        let empty_msg = if app.filter.is_empty() {
+            "tmux 세션을 찾을 수 없습니다. 'n'을 눌러 새로 만드세요."
+        } else {
+            "필터와 일치하는 세션이 없습니다."
+        };
+        let paragraph = Paragraph::new(empty_msg)
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        frame.render_widget(paragraph, area);
+        app.scroll_state = scroll_state;
+        return;
+    }
+
+    let mut items: Vec<ListItem> = Vec::new();
+    let mut visual_pos = 0;
+
+    for group in app.grouped_view.groups.iter() {
+        let is_header_selected = visual_pos == app.grouped_selected;
+
+        // Group header: ▼/▶ + path + (count)
+        let arrow = if group.collapsed { "▶" } else { "▼" };
+        let header_line = Line::from(vec![
+            Span::styled(
+                format!("{} ", arrow),
+                Style::default().fg(Color::Cyan),
+            ),
+            Span::styled(
+                &group.display_name,
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!(" ({})", group.session_indices.len()),
+                Style::default().fg(Color::DarkGray),
+            ),
+        ]);
+
+        let header_style = if is_header_selected {
+            Style::default().bg(Color::DarkGray)
+        } else {
+            Style::default()
+        };
+        items.push(ListItem::new(header_line).style(header_style));
+        visual_pos += 1;
+
+        // Sessions within the group (if expanded)
+        if !group.collapsed {
+            for &session_idx in &group.session_indices {
+                let is_session_selected = visual_pos == app.grouped_selected;
+
+                if let Some(session) = filtered.get(session_idx) {
+                    let is_current = app
+                        .current_session
+                        .as_ref()
+                        .is_some_and(|c| c == &session.name);
+
+                    let status = &session.claude_code_status;
+                    let status_color = match (status, is_session_selected) {
+                        (ClaudeCodeStatus::Working, _) => Color::Green,
+                        (ClaudeCodeStatus::WaitingInput, _) => Color::Yellow,
+                        (ClaudeCodeStatus::Idle, true) => Color::White,
+                        (ClaudeCodeStatus::Idle, false) => Color::DarkGray,
+                        (ClaudeCodeStatus::Unknown, true) => Color::Gray,
+                        (ClaudeCodeStatus::Unknown, false) => Color::DarkGray,
+                    };
+
+                    let marker = if is_session_selected { "▸" } else { " " };
+                    let name_style = if is_current {
+                        Style::default().add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default()
+                    };
+
+                    // Build git info spans (branch + status only, path is in header)
+                    let git_spans = build_git_info_spans(session);
+
+                    let mut spans = vec![
+                        Span::raw(format!("   {} ", marker)),
+                        Span::styled(&session.name, name_style),
+                        Span::raw("  "),
+                        Span::styled(status.symbol(), Style::default().fg(status_color)),
+                        Span::raw(" "),
+                        Span::styled(
+                            format!("{:<8}", status.label()),
+                            Style::default().fg(status_color),
+                        ),
+                    ];
+                    spans.extend(git_spans);
+
+                    let style = if is_session_selected {
+                        Style::default().bg(Color::DarkGray)
+                    } else {
+                        Style::default()
+                    };
+                    items.push(ListItem::new(Line::from(spans)).style(style));
+                }
+                visual_pos += 1;
+            }
+        }
+    }
+
+    {
+        let list = List::new(items);
+        let list_state = scroll_state.update(selected_index, total_items, visible_height);
+        StatefulWidget::render(list, area, frame.buffer_mut(), list_state);
+    }
+
+    app.scroll_state = scroll_state;
+}
+
+/// Build git info spans (branch + status indicators) for a session
+fn build_git_info_spans<'a>(session: &'a crate::session::Session) -> Vec<Span<'a>> {
+    let Some(ref git) = session.git_context else {
+        return vec![];
+    };
+
+    let (open, close) = if git.is_worktree {
+        ("[", "]")
+    } else {
+        ("(", ")")
+    };
+    let bracket_color = if git.is_worktree {
+        Color::Magenta
+    } else {
+        Color::Cyan
+    };
+
+    let mut status_str = String::new();
+    if git.has_staged {
+        status_str.push('+');
+    }
+    if git.has_unstaged {
+        status_str.push('*');
+    }
+    let status_spans = if !status_str.is_empty() {
+        let color = if git.has_staged && !git.has_unstaged {
+            Color::Green
+        } else {
+            Color::Yellow
+        };
+        vec![Span::styled(
+            format!(" {}", status_str),
+            Style::default().fg(color),
+        )]
+    } else {
+        vec![]
+    };
+
+    let mut spans = vec![
+        Span::raw(" "),
+        Span::styled(open, Style::default().fg(bracket_color)),
+        Span::styled(&git.branch, Style::default().fg(Color::Cyan)),
+        Span::styled(close, Style::default().fg(bracket_color)),
+    ];
+    spans.extend(status_spans);
+    spans
+}
+
+fn render_flat_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
     // Compute scroll state values before borrowing for items
     let selected_index = app.compute_flat_list_index();
     let total_items = app.compute_total_list_items();
@@ -223,51 +415,7 @@ fn render_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
         };
 
         // Build git info spans
-        let git_spans = if let Some(ref git) = session.git_context {
-            let (open, close) = if git.is_worktree {
-                ("[", "]")
-            } else {
-                ("(", ")")
-            };
-            let bracket_color = if git.is_worktree {
-                Color::Magenta
-            } else {
-                Color::Cyan
-            };
-
-            // Show status indicators: + for staged, * for unstaged
-            let mut status_str = String::new();
-            if git.has_staged {
-                status_str.push('+');
-            }
-            if git.has_unstaged {
-                status_str.push('*');
-            }
-            let status_spans = if !status_str.is_empty() {
-                let color = if git.has_staged && !git.has_unstaged {
-                    Color::Green // Only staged = green
-                } else {
-                    Color::Yellow // Mixed state = yellow
-                };
-                vec![Span::styled(
-                    format!(" {}", status_str),
-                    Style::default().fg(color),
-                )]
-            } else {
-                vec![]
-            };
-
-            let mut spans = vec![
-                Span::raw(" "),
-                Span::styled(open, Style::default().fg(bracket_color)),
-                Span::styled(&git.branch, Style::default().fg(Color::Cyan)),
-                Span::styled(close, Style::default().fg(bracket_color)),
-            ];
-            spans.extend(status_spans);
-            spans
-        } else {
-            vec![]
-        };
+        let git_spans = build_git_info_spans(session);
 
         // Line 1: marker + session name + status symbol/label
         let line1 = Line::from(vec![
@@ -513,6 +661,10 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 
     let mut parts = vec![format!("{}개 세션", total)];
 
+    if app.grouped_view.enabled {
+        parts.push(format!("{}개 프로젝트", app.grouped_view.groups.len()));
+    }
+
     if working > 0 {
         parts.push(format!("{}개 작업중", working));
     }
@@ -538,12 +690,15 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let hints = match app.mode {
         Mode::Normal => {
-            "  ? 도움말  jk 이동  l 액션  ⏎ 전환  n 새세션  K 종료  R 새로고침  / 필터  q 나가기"
+            "  ? 도움말  jk 이동  l 액션  ⏎ 전환  g 그룹  n 새세션  K 종료  R 새로고침  / 필터  : 검색  q 나가기"
         }
         Mode::ActionMenu => "  jk 이동  ⏎/l 선택  h/esc 뒤로  q 나가기",
         Mode::Filter { .. } => "  ⏎ 적용  esc 취소",
+        Mode::Search { .. } => "  jk 이동  ⏎ 확정  esc 취소",
         Mode::ConfirmAction => "  y/⏎ 확인  n/esc 취소",
-        Mode::NewSession { .. } => "  ⏎ 생성  tab 전환  ↑↓ 선택  → 수락  esc 취소",
+        Mode::NewSession { .. } => {
+            "  ⏎ 생성  ^W 워크트리  tab 전환  ↑↓ 선택  → 수락  esc 취소"
+        }
         Mode::Rename { .. } => "  ⏎ 확인  esc 취소",
         Mode::Commit { .. } => "  ⏎ 커밋  esc 취소",
         Mode::NewWorktree { .. } => "  ⏎ 생성  tab 전환  ↑↓ 선택  → 수락  esc 취소",
@@ -560,5 +715,16 @@ fn render_filter_bar(frame: &mut Frame, input: &str, area: Rect) {
     frame.render_widget(Clear, area);
     let text = format!("  / {}", input);
     let bar = Paragraph::new(text).style(Style::default().fg(Color::Yellow));
+    frame.render_widget(bar, area);
+}
+
+fn render_search_bar(frame: &mut Frame, input: &str, area: Rect) {
+    frame.render_widget(Clear, area);
+    let text = Line::from(vec![
+        Span::styled("  : ", Style::default().fg(Color::Cyan)),
+        Span::styled(input, Style::default().fg(Color::Cyan)),
+        Span::styled("▏", Style::default().fg(Color::Cyan)),
+    ]);
+    let bar = Paragraph::new(text);
     frame.render_widget(bar, area);
 }

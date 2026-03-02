@@ -25,6 +25,14 @@ pub enum Mode {
         path_suggestions: Vec<String>,
         /// Currently selected path suggestion index
         path_selected: Option<usize>,
+        /// Whether worktree creation is enabled
+        worktree_enabled: bool,
+        /// Branch name input (when worktree mode is on)
+        branch_input: String,
+        /// All branches in the repository (loaded when worktree enabled)
+        all_branches: Vec<String>,
+        /// Selected index in filtered branches
+        selected_branch: Option<usize>,
     },
     /// Renaming a session
     Rename { old_name: String, new_name: String },
@@ -62,6 +70,8 @@ pub enum Mode {
         /// Which field is active
         field: CreatePullRequestField,
     },
+    /// Real-time search mode (k9s-style, filters as you type)
+    Search { input: String },
     /// Showing help
     Help,
 }
@@ -144,6 +154,8 @@ impl SessionAction {
 pub enum NewSessionField {
     Name,
     Path,
+    /// Branch field, only used when worktree_enabled is true
+    Branch,
 }
 
 /// Which field is active in the new worktree dialog

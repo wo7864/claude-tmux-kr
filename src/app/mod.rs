@@ -12,6 +12,7 @@ mod mode;
 use anyhow::Result;
 
 use crate::git::{self, GitContext, PullRequestInfo};
+use crate::group::{GroupedItem, GroupedView};
 use crate::scroll_state::ScrollState;
 use crate::session::Session;
 use crate::tmux::Tmux;
@@ -56,6 +57,12 @@ pub struct App {
     pub scroll_state: ScrollState,
     /// Last known preview area height (set during rendering)
     pub preview_height: u16,
+    /// Grouped view state for project-based session grouping
+    pub grouped_view: GroupedView,
+    /// Visual cursor position in grouped mode
+    pub grouped_selected: usize,
+    /// Grouped view state saved before entering search mode
+    pub grouped_before_search: bool,
 }
 
 impl App {
@@ -84,8 +91,12 @@ impl App {
             pr_info: None,
             scroll_state: ScrollState::new(),
             preview_height: 0,
+            grouped_view: GroupedView::new(),
+            grouped_selected: 0,
+            grouped_before_search: false,
         };
 
+        app.rebuild_groups();
         app.update_preview();
         Ok(app)
     }
@@ -135,6 +146,15 @@ impl App {
                 if self.selected >= self.sessions.len() && !self.sessions.is_empty() {
                     self.selected = self.sessions.len() - 1;
                 }
+                if self.grouped_view.enabled {
+                    self.rebuild_groups();
+                    // Clamp grouped cursor
+                    let count = self.grouped_view.visible_item_count();
+                    if count > 0 && self.grouped_selected >= count {
+                        self.grouped_selected = count - 1;
+                    }
+                    self.sync_selected_from_grouped();
+                }
                 self.update_preview();
                 true
             }
@@ -173,6 +193,10 @@ impl App {
 
     /// Move selection up
     pub fn select_prev(&mut self) {
+        if self.grouped_view.enabled {
+            self.grouped_select_prev();
+            return;
+        }
         let count = self.filtered_sessions().len();
         if count > 0 && self.selected > 0 {
             self.selected -= 1;
@@ -182,6 +206,10 @@ impl App {
 
     /// Move selection down
     pub fn select_next(&mut self) {
+        if self.grouped_view.enabled {
+            self.grouped_select_next();
+            return;
+        }
         let count = self.filtered_sessions().len();
         if count > 0 && self.selected < count - 1 {
             self.selected += 1;
@@ -643,54 +671,253 @@ impl App {
     /// Start the new session flow
     pub fn start_new_session(&mut self) {
         self.clear_messages();
-        let default_path = "~/projects/".to_string();
-        let completion = crate::completion::complete_path(&default_path);
+
+        // If grouped view is enabled and cursor is on a group header, use that group's path
+        let default_path = if self.grouped_view.enabled {
+            if let Some(GroupedItem::GroupHeader { group_index }) = self.grouped_selected_item() {
+                self.grouped_view.groups.get(group_index).map(|g| {
+                    let mut p = g.display_name.clone();
+                    if !p.ends_with('/') {
+                        p.push('/');
+                    }
+                    p
+                })
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        let path = default_path.unwrap_or_else(|| "~/projects/".to_string());
+        let completion = crate::completion::complete_path(&path);
 
         self.mode = Mode::NewSession {
             name: String::new(),
-            path: default_path,
+            path,
             field: NewSessionField::Path,
             path_suggestions: completion.suggestions,
             path_selected: None,
+            worktree_enabled: false,
+            branch_input: String::new(),
+            all_branches: Vec::new(),
+            selected_branch: None,
         };
     }
 
     /// Create the new session
     pub fn confirm_new_session(&mut self, start_claude: bool) {
         if let Mode::NewSession {
-            ref name, ref path, ..
+            ref name,
+            ref path,
+            worktree_enabled,
+            ref branch_input,
+            ref all_branches,
+            selected_branch,
+            ..
         } = self.mode
         {
-            let session_name = if name.is_empty() {
-                let clean_path = path.trim_end_matches('/');
-                clean_path
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("new-session")
-                    .to_string()
-            } else {
-                name.clone()
-            };
+            if worktree_enabled {
+                // --- Worktree mode ---
+                let source_repo = expand_path(path);
 
-            if session_name.is_empty() {
-                self.error = Some("세션 이름을 입력하세요".to_string());
-                self.mode = Mode::Normal;
-                return;
-            }
-
-            let session_path = expand_path(path);
-
-            match Tmux::new_session(&session_name, &session_path, start_claude) {
-                Ok(_) => {
-                    self.refresh_sessions();
-                    self.message = Some(format!("세션 '{}' 생성 완료", session_name));
+                if branch_input.is_empty() && selected_branch.is_none() {
+                    self.error = Some("브랜치 이름을 입력하세요".to_string());
+                    self.mode = Mode::Normal;
+                    return;
                 }
-                Err(e) => {
-                    self.error = Some(format!("세션 생성 실패: {}", e));
+
+                // Determine branch name and whether it's new
+                let filtered: Vec<&str> = if branch_input.is_empty() {
+                    all_branches.iter().map(|s| s.as_str()).collect()
+                } else {
+                    let input_lower = branch_input.to_lowercase();
+                    all_branches
+                        .iter()
+                        .filter(|b| b.to_lowercase().contains(&input_lower))
+                        .map(|s| s.as_str())
+                        .collect()
+                };
+
+                let (branch_name, is_new_branch) = if let Some(idx) = selected_branch {
+                    (
+                        filtered
+                            .get(idx)
+                            .copied()
+                            .unwrap_or(branch_input.as_str())
+                            .to_string(),
+                        false,
+                    )
+                } else if all_branches.iter().any(|b| b == branch_input) {
+                    (branch_input.clone(), false)
+                } else {
+                    (branch_input.clone(), true)
+                };
+
+                let worktree_path = default_worktree_path(&source_repo, &branch_name);
+                let session_name = if name.is_empty() {
+                    let repo_name = source_repo
+                        .file_name()
+                        .and_then(|s| s.to_str())
+                        .unwrap_or("repo");
+                    let branch_suffix = sanitize_for_session_name(&branch_name);
+                    format!("{}-{}", repo_name, branch_suffix)
+                } else {
+                    name.clone()
+                };
+
+                if session_name.is_empty() {
+                    self.error = Some("세션 이름을 입력하세요".to_string());
+                    self.mode = Mode::Normal;
+                    return;
+                }
+
+                // Create worktree then session
+                match GitContext::create_worktree(
+                    &source_repo,
+                    &worktree_path,
+                    &branch_name,
+                    is_new_branch,
+                ) {
+                    Ok(_) => match Tmux::new_session(&session_name, &worktree_path, start_claude) {
+                        Ok(_) => {
+                            self.refresh_sessions();
+                            self.message = Some(format!(
+                                "워크트리 '{}' 및 세션 '{}' 생성 완료",
+                                branch_name, session_name
+                            ));
+                        }
+                        Err(e) => {
+                            self.error =
+                                Some(format!("워크트리 생성됨, 세션 생성 실패: {}", e));
+                        }
+                    },
+                    Err(e) => {
+                        self.error = Some(format!("워크트리 생성 실패: {}", e));
+                    }
+                }
+            } else {
+                // --- Normal mode ---
+                let session_name = if name.is_empty() {
+                    let clean_path = path.trim_end_matches('/');
+                    clean_path
+                        .rsplit('/')
+                        .next()
+                        .unwrap_or("new-session")
+                        .to_string()
+                } else {
+                    name.clone()
+                };
+
+                if session_name.is_empty() {
+                    self.error = Some("세션 이름을 입력하세요".to_string());
+                    self.mode = Mode::Normal;
+                    return;
+                }
+
+                let session_path = expand_path(path);
+
+                match Tmux::new_session(&session_name, &session_path, start_claude) {
+                    Ok(_) => {
+                        self.refresh_sessions();
+                        self.message = Some(format!("세션 '{}' 생성 완료", session_name));
+                    }
+                    Err(e) => {
+                        self.error = Some(format!("세션 생성 실패: {}", e));
+                    }
                 }
             }
         }
         self.mode = Mode::Normal;
+    }
+
+    /// Toggle worktree mode in the new session dialog
+    pub fn toggle_new_session_worktree(&mut self) {
+        if let Mode::NewSession {
+            ref path,
+            ref mut worktree_enabled,
+            ref mut branch_input,
+            ref mut all_branches,
+            ref mut selected_branch,
+            ref mut field,
+            ..
+        } = self.mode
+        {
+            *worktree_enabled = !*worktree_enabled;
+            if *worktree_enabled {
+                // Load branches from the current path
+                let repo_path = expand_path(path);
+                match GitContext::list_branches(&repo_path) {
+                    Ok(branches) => *all_branches = branches,
+                    Err(_) => {
+                        // Not a git repo or error — keep empty, user can change path
+                        *all_branches = Vec::new();
+                    }
+                }
+            } else {
+                // Reset branch fields
+                *branch_input = String::new();
+                *all_branches = Vec::new();
+                *selected_branch = None;
+                // If currently on Branch field, move to Path
+                if *field == NewSessionField::Branch {
+                    *field = NewSessionField::Path;
+                }
+            }
+        }
+    }
+
+    /// Update branch list when path changes in worktree mode
+    pub fn update_new_session_branches(&mut self) {
+        if let Mode::NewSession {
+            ref path,
+            worktree_enabled,
+            ref mut all_branches,
+            ref mut selected_branch,
+            ..
+        } = self.mode
+        {
+            if worktree_enabled {
+                let repo_path = expand_path(path);
+                match GitContext::list_branches(&repo_path) {
+                    Ok(branches) => {
+                        *all_branches = branches;
+                        *selected_branch = None;
+                    }
+                    Err(_) => {
+                        *all_branches = Vec::new();
+                        *selected_branch = None;
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get filtered branches for the new session worktree mode
+    pub fn filtered_new_session_branches(&self) -> Vec<&str> {
+        if let Mode::NewSession {
+            ref all_branches,
+            ref branch_input,
+            worktree_enabled,
+            ..
+        } = self.mode
+        {
+            if !worktree_enabled {
+                return vec![];
+            }
+            if branch_input.is_empty() {
+                all_branches.iter().map(|s| s.as_str()).collect()
+            } else {
+                let input_lower = branch_input.to_lowercase();
+                all_branches
+                    .iter()
+                    .filter(|b| b.to_lowercase().contains(&input_lower))
+                    .map(|s| s.as_str())
+                    .collect()
+            }
+        } else {
+            vec![]
+        }
     }
 
     // =========================================================================
@@ -1003,6 +1230,11 @@ impl App {
             self.selected = 0; // Reset selection when filter changes
         }
         self.mode = Mode::Normal;
+        if self.grouped_view.enabled {
+            self.rebuild_groups();
+            self.grouped_selected = 0;
+            self.sync_selected_from_grouped();
+        }
         self.update_preview();
     }
 
@@ -1010,6 +1242,41 @@ impl App {
     pub fn clear_filter(&mut self) {
         self.filter.clear();
         self.selected = 0;
+    }
+
+    /// Enter real-time search mode (k9s-style)
+    pub fn start_search(&mut self) {
+        self.clear_messages();
+        self.grouped_before_search = self.grouped_view.enabled;
+        self.grouped_view.enabled = false;
+        self.filter.clear();
+        self.selected = 0;
+        self.mode = Mode::Search {
+            input: String::new(),
+        };
+    }
+
+    /// Update filter from current search input
+    pub fn update_search_filter(&mut self) {
+        if let Mode::Search { ref input } = self.mode {
+            self.filter = input.clone();
+            self.selected = 0;
+            self.update_preview();
+        }
+    }
+
+    /// Cancel search mode: clear filter and restore grouped state
+    pub fn cancel_search(&mut self) {
+        self.filter.clear();
+        self.grouped_view.enabled = self.grouped_before_search;
+        if self.grouped_view.enabled {
+            self.rebuild_groups();
+            self.grouped_selected = 0;
+            self.sync_selected_from_grouped();
+        }
+        self.selected = 0;
+        self.mode = Mode::Normal;
+        self.update_preview();
     }
 
     /// Show help
@@ -1020,6 +1287,10 @@ impl App {
 
     /// Cancel current mode and return to normal
     pub fn cancel(&mut self) {
+        if matches!(self.mode, Mode::Search { .. }) {
+            self.cancel_search();
+            return;
+        }
         self.pending_action = None;
         self.pr_info = None;
         self.mode = Mode::Normal;
@@ -1284,6 +1555,75 @@ impl App {
     }
 
     // =========================================================================
+    // Grouped view
+    // =========================================================================
+
+    /// Toggle between flat and grouped session view
+    pub fn toggle_grouped_view(&mut self) {
+        self.grouped_view.toggle();
+        if self.grouped_view.enabled {
+            self.rebuild_groups();
+            // Position grouped cursor at the first item
+            self.grouped_selected = 0;
+            self.sync_selected_from_grouped();
+        }
+    }
+
+    /// Rebuild groups from current filtered sessions
+    pub fn rebuild_groups(&mut self) {
+        // Inline filter logic to allow field-level borrow splitting
+        // (filtered_sessions() borrows all of self, preventing &mut self.grouped_view)
+        let filtered: Vec<&Session> = if self.filter.is_empty() {
+            self.sessions.iter().collect()
+        } else {
+            let filter_lower = self.filter.to_lowercase();
+            self.sessions
+                .iter()
+                .filter(|s| {
+                    s.name.to_lowercase().contains(&filter_lower)
+                        || s.display_path().to_lowercase().contains(&filter_lower)
+                })
+                .collect()
+        };
+        self.grouped_view.rebuild(&filtered);
+    }
+
+    /// Move grouped cursor to next visible item
+    pub fn grouped_select_next(&mut self) {
+        let count = self.grouped_view.visible_item_count();
+        if count > 0 && self.grouped_selected < count - 1 {
+            self.grouped_selected += 1;
+            self.sync_selected_from_grouped();
+            self.update_preview();
+        }
+    }
+
+    /// Move grouped cursor to previous visible item
+    pub fn grouped_select_prev(&mut self) {
+        if self.grouped_selected > 0 {
+            self.grouped_selected -= 1;
+            self.sync_selected_from_grouped();
+            self.update_preview();
+        }
+    }
+
+    /// Get the current grouped item at the cursor
+    pub fn grouped_selected_item(&self) -> Option<GroupedItem> {
+        self.grouped_view.item_at(self.grouped_selected)
+    }
+
+    /// Sync self.selected from the grouped cursor position.
+    /// When the cursor points to a session, set self.selected to its filter index
+    /// so that selected_session() and other existing methods work unchanged.
+    pub fn sync_selected_from_grouped(&mut self) {
+        if let Some(item) = self.grouped_view.item_at(self.grouped_selected) {
+            if let Some(idx) = self.grouped_view.session_index_for(item) {
+                self.selected = idx;
+            }
+        }
+    }
+
+    // =========================================================================
     // Scroll/list computation
     // =========================================================================
 
@@ -1293,6 +1633,11 @@ impl App {
     /// to show metadata and action items. This method computes the index
     /// into the flat list of rendered items.
     pub fn compute_flat_list_index(&self) -> usize {
+        // In grouped mode, use grouped_selected as the visual index
+        if self.grouped_view.enabled && !matches!(self.mode, Mode::ActionMenu) {
+            return self.grouped_selected;
+        }
+
         let filtered_count = self.filtered_sessions().len();
         if filtered_count == 0 {
             return 0;
@@ -1341,6 +1686,11 @@ impl App {
     ///
     /// This accounts for the expanded content when in ActionMenu mode.
     pub fn compute_total_list_items(&self) -> usize {
+        // In grouped mode, total items = headers + expanded sessions
+        if self.grouped_view.enabled && !matches!(self.mode, Mode::ActionMenu) {
+            return self.grouped_view.visible_item_count();
+        }
+
         let filtered_count = self.filtered_sessions().len();
         if filtered_count == 0 {
             return 0;

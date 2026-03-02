@@ -2,6 +2,7 @@ mod app;
 mod completion;
 mod detection;
 mod git;
+mod group;
 mod input;
 mod scroll_state;
 mod session;

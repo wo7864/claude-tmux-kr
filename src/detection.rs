@@ -4,8 +4,8 @@ use crate::session::ClaudeCodeStatus;
 pub fn detect_status(content: &str) -> ClaudeCodeStatus {
     // Step 1: Detect input field by its visual structure
     if has_input_field(content) {
-        // Step 2: Check if interruptable
-        if content.contains("ctrl+c") && content.contains("to interrupt") {
+        // Step 2: Check if interruptable (covers both "esc to interrupt" and "ctrl+c to interrupt")
+        if content.contains("to interrupt") {
             return ClaudeCodeStatus::Working;
         }
         return ClaudeCodeStatus::Idle;
@@ -40,9 +40,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_working() {
-        // Border directly above prompt
+    fn test_working_ctrl_c() {
+        // Legacy: ctrl+c to interrupt
         let content = "* (ctrl+c to interrupt)\n─────\n❯ hello";
+        assert_eq!(detect_status(content), ClaudeCodeStatus::Working);
+    }
+
+    #[test]
+    fn test_working_esc() {
+        // Current: esc to interrupt
+        let content = "bypass permissions on · esc to interrupt\n─────\n❯ ";
         assert_eq!(detect_status(content), ClaudeCodeStatus::Working);
     }
 

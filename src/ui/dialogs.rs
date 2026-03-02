@@ -206,6 +206,7 @@ pub fn render_confirm_action(frame: &mut Frame, app: &App) {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn render_new_session_dialog(
     frame: &mut Frame,
     name: &str,
@@ -213,6 +214,10 @@ pub fn render_new_session_dialog(
     field: NewSessionField,
     path_suggestions: &[String],
     path_selected: Option<usize>,
+    worktree_enabled: bool,
+    branch_input: &str,
+    filtered_branches: &[&str],
+    selected_branch: Option<usize>,
 ) {
     // Calculate dialog height based on suggestions shown
     let suggestions_to_show = if field == NewSessionField::Path && !path_suggestions.is_empty() {
@@ -221,16 +226,46 @@ pub fn render_new_session_dialog(
         0
     };
     let suggestion_extra = if suggestions_to_show > 0 {
-        2 + if path_suggestions.len() > 5 { 1 } else { 0 } // separators + optional "more"
+        2 + if path_suggestions.len() > 5 { 1 } else { 0 }
     } else {
         0
     };
-    let dialog_height = 8 + suggestions_to_show as u16 + suggestion_extra as u16;
+
+    // Branch suggestions height (when worktree mode is on and branch field is active)
+    let branches_to_show = if worktree_enabled
+        && field == NewSessionField::Branch
+        && !filtered_branches.is_empty()
+    {
+        filtered_branches.len().min(5)
+    } else {
+        0
+    };
+    let branch_extra = if branches_to_show > 0 {
+        2 + if filtered_branches.len() > 5 { 1 } else { 0 }
+    } else {
+        0
+    };
+
+    // Extra height for worktree fields (branch line + empty line)
+    let worktree_extra = if worktree_enabled { 2 } else { 0 };
+
+    let dialog_height = 8
+        + suggestions_to_show as u16
+        + suggestion_extra as u16
+        + worktree_extra as u16
+        + branches_to_show as u16
+        + branch_extra as u16;
 
     let area = centered_rect(60, dialog_height, frame.area());
 
+    let title = if worktree_enabled {
+        " 새 세션 (워크트리) "
+    } else {
+        " 새 세션 "
+    };
+
     let block = Block::default()
-        .title(" 새 세션 ")
+        .title(title)
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan));
 
@@ -253,10 +288,7 @@ pub fn render_new_session_dialog(
     let mut lines = Vec::new();
 
     // Name field with auto-generation hint
-    let mut name_spans = vec![
-        Span::styled("이름: ", name_style),
-        Span::raw(name),
-    ];
+    let mut name_spans = vec![Span::styled("이름:   ", name_style), Span::raw(name)];
     if field == NewSessionField::Name {
         name_spans.push(Span::raw("_"));
     }
@@ -266,7 +298,9 @@ pub fn render_new_session_dialog(
             if !folder_name.is_empty() {
                 name_spans.push(Span::styled(
                     format!(" (자동: {})", folder_name),
-                    Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                    Style::default()
+                        .fg(Color::DarkGray)
+                        .add_modifier(Modifier::DIM),
                 ));
             }
         }
@@ -276,6 +310,12 @@ pub fn render_new_session_dialog(
     lines.push(Line::raw(""));
 
     // Path field with ghost text
+    let path_label = if worktree_enabled {
+        "저장소: "
+    } else {
+        "경로:   "
+    };
+
     let ghost_text = if field == NewSessionField::Path {
         crate::completion::complete_path(path).ghost_text
     } else {
@@ -283,7 +323,7 @@ pub fn render_new_session_dialog(
     };
 
     let mut path_spans = vec![
-        Span::styled("경로: ", path_style),
+        Span::styled(path_label, path_style),
         Span::styled(path, Style::default().fg(Color::Yellow)),
     ];
 
@@ -307,13 +347,17 @@ pub fn render_new_session_dialog(
     // Show path suggestions when path field is active
     if field == NewSessionField::Path && !path_suggestions.is_empty() {
         lines.push(Line::styled(
-            "      ────────────────────────────────────",
+            "        ────────────────────────────────────",
             Style::default().fg(Color::DarkGray),
         ));
 
         for (i, suggestion) in path_suggestions.iter().take(5).enumerate() {
             let is_selected = path_selected == Some(i);
-            let prefix = if is_selected { "    > " } else { "      " };
+            let prefix = if is_selected {
+                "      > "
+            } else {
+                "        "
+            };
             let style = if is_selected {
                 Style::default()
                     .fg(Color::Cyan)
@@ -326,22 +370,115 @@ pub fn render_new_session_dialog(
 
         if path_suggestions.len() > 5 {
             lines.push(Line::styled(
-                format!("      ... 외 {}개", path_suggestions.len() - 5),
+                format!("        ... 외 {}개", path_suggestions.len() - 5),
                 Style::default().fg(Color::DarkGray),
             ));
         }
 
         lines.push(Line::styled(
-            "      ────────────────────────────────────",
+            "        ────────────────────────────────────",
             Style::default().fg(Color::DarkGray),
         ));
     }
 
+    // Branch ghost text (declared outside block so it lives long enough for lines)
+    let branch_ghost = if worktree_enabled && field == NewSessionField::Branch {
+        crate::completion::branch_ghost_text(branch_input, filtered_branches, selected_branch)
+    } else {
+        None
+    };
+
+    // Branch field (only in worktree mode)
+    if worktree_enabled {
+        lines.push(Line::raw(""));
+
+        let branch_style = if field == NewSessionField::Branch {
+            Style::default()
+                .fg(Color::Yellow)
+                .add_modifier(Modifier::BOLD)
+        } else {
+            Style::default()
+        };
+
+        let is_new_branch = selected_branch.is_none()
+            && !branch_input.is_empty()
+            && !filtered_branches.contains(&branch_input);
+
+        let branch_indicator = if is_new_branch {
+            Span::styled(" (신규)", Style::default().fg(Color::Green))
+        } else if selected_branch.is_some() {
+            Span::styled(" (기존)", Style::default().fg(Color::Cyan))
+        } else {
+            Span::raw("")
+        };
+
+        let mut branch_spans = vec![
+            Span::styled("브랜치: ", branch_style),
+            Span::styled(branch_input, Style::default().fg(Color::Yellow)),
+        ];
+
+        if let Some(ref ghost) = branch_ghost {
+            branch_spans.push(Span::styled(
+                ghost,
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::DIM),
+            ));
+        }
+
+        if field == NewSessionField::Branch {
+            branch_spans.push(Span::raw("_"));
+        }
+
+        branch_spans.push(branch_indicator);
+        lines.push(Line::from(branch_spans));
+
+        // Show filtered branches if in branch field
+        if field == NewSessionField::Branch && !filtered_branches.is_empty() {
+            lines.push(Line::styled(
+                "        ─────────────────────────────",
+                Style::default().fg(Color::DarkGray),
+            ));
+
+            for (i, branch) in filtered_branches.iter().take(5).enumerate() {
+                let is_selected = selected_branch == Some(i);
+                let prefix = if is_selected {
+                    "      > "
+                } else {
+                    "        "
+                };
+                let style = if is_selected {
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                lines.push(Line::styled(format!("{}{}", prefix, branch), style));
+            }
+
+            if filtered_branches.len() > 5 {
+                lines.push(Line::styled(
+                    format!("        ... 외 {}개", filtered_branches.len() - 5),
+                    Style::default().fg(Color::DarkGray),
+                ));
+            }
+
+            lines.push(Line::styled(
+                "        ─────────────────────────────",
+                Style::default().fg(Color::DarkGray),
+            ));
+        }
+    }
+
     lines.push(Line::raw(""));
-    lines.push(Line::styled(
-        "↑↓ 선택  → 진입  Tab 전환  Enter 생성  Esc 취소",
-        Style::default().fg(Color::DarkGray),
-    ));
+
+    let hint = if worktree_enabled {
+        "^W 워크트리  Tab 전환  ↑↓ 선택  → 수락  Enter 생성  Esc 취소"
+    } else {
+        "^W 워크트리  Tab 전환  ↑↓ 선택  → 진입  Enter 생성  Esc 취소"
+    };
+    lines.push(Line::styled(hint, Style::default().fg(Color::DarkGray)));
 
     let text = Text::from(lines);
     let paragraph = Paragraph::new(text)

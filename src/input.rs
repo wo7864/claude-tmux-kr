@@ -1,6 +1,7 @@
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 use crate::app::{App, CreatePullRequestField, Mode, NewSessionField, NewWorktreeField};
+use crate::group::GroupedItem;
 
 /// Handle a key event and update the application state
 pub fn handle_key(app: &mut App, key: KeyEvent) {
@@ -11,6 +12,7 @@ pub fn handle_key(app: &mut App, key: KeyEvent) {
         Mode::Normal => handle_normal_mode(app, key),
         Mode::ActionMenu => handle_action_menu_mode(app, key),
         Mode::Filter { .. } => handle_filter_mode(app, key),
+        Mode::Search { .. } => handle_search_mode(app, key),
         Mode::ConfirmAction => handle_confirm_action_mode(app, key),
         Mode::NewSession { .. } => handle_new_session_mode(app, key),
         Mode::Rename { .. } => handle_rename_mode(app, key),
@@ -36,14 +38,78 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) {
             app.select_prev();
         }
 
-        // Enter action menu
+        // Enter action menu / expand group
         KeyCode::Char('l') | KeyCode::Right => {
-            app.enter_action_menu();
+            if app.grouped_view.enabled {
+                match app.grouped_selected_item() {
+                    Some(GroupedItem::GroupHeader { group_index }) => {
+                        // Expand collapsed group
+                        if app.grouped_view.groups.get(group_index).is_some_and(|g| g.collapsed) {
+                            app.grouped_view.toggle_group(group_index);
+                        }
+                    }
+                    Some(GroupedItem::Session { .. }) => {
+                        app.enter_action_menu();
+                    }
+                    None => {}
+                }
+            } else {
+                app.enter_action_menu();
+            }
         }
 
-        // Switch to session (quick action)
+        // Collapse group / go back
+        KeyCode::Char('h') | KeyCode::Left => {
+            if app.grouped_view.enabled {
+                match app.grouped_selected_item() {
+                    Some(GroupedItem::Session { group_index, .. }) => {
+                        // Move to the group header and collapse
+                        let header_pos = app.grouped_view.visual_index_of_group(group_index);
+                        app.grouped_selected = header_pos;
+                        app.grouped_view.toggle_group(group_index);
+                        // Ensure collapsed state is reflected
+                        if !app.grouped_view.groups.get(group_index).is_some_and(|g| g.collapsed) {
+                            app.grouped_view.toggle_group(group_index);
+                        }
+                        app.sync_selected_from_grouped();
+                        app.update_preview();
+                    }
+                    Some(GroupedItem::GroupHeader { group_index }) => {
+                        // Collapse if expanded
+                        if app.grouped_view.groups.get(group_index).is_some_and(|g| !g.collapsed) {
+                            app.grouped_view.toggle_group(group_index);
+                        }
+                    }
+                    None => {}
+                }
+            }
+        }
+
+        // Switch to session / toggle group (quick action)
         KeyCode::Enter => {
-            app.switch_to_selected();
+            if app.grouped_view.enabled {
+                match app.grouped_selected_item() {
+                    Some(GroupedItem::GroupHeader { group_index }) => {
+                        app.grouped_view.toggle_group(group_index);
+                        // After expanding, clamp grouped_selected
+                        let count = app.grouped_view.visible_item_count();
+                        if app.grouped_selected >= count && count > 0 {
+                            app.grouped_selected = count - 1;
+                        }
+                    }
+                    Some(GroupedItem::Session { .. }) => {
+                        app.switch_to_selected();
+                    }
+                    None => {}
+                }
+            } else {
+                app.switch_to_selected();
+            }
+        }
+
+        // Toggle grouped view
+        KeyCode::Char('g') => {
+            app.toggle_grouped_view();
         }
 
         // New session
@@ -64,6 +130,11 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) {
         // Filter
         KeyCode::Char('/') => {
             app.start_filter();
+        }
+
+        // Real-time search (k9s-style)
+        KeyCode::Char(':') => {
+            app.start_search();
         }
 
         // Clear filter
@@ -102,6 +173,37 @@ fn handle_filter_mode(app: &mut App, key: KeyEvent) {
             if let Mode::Filter { ref mut input } = app.mode {
                 input.push(c);
             }
+        }
+        _ => {}
+    }
+}
+
+fn handle_search_mode(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => {
+            app.cancel_search();
+        }
+        KeyCode::Enter => {
+            // Confirm search: keep current filter, return to normal
+            app.mode = Mode::Normal;
+        }
+        KeyCode::Backspace => {
+            if let Mode::Search { ref mut input } = app.mode {
+                input.pop();
+            }
+            app.update_search_filter();
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.select_next();
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.select_prev();
+        }
+        KeyCode::Char(c) => {
+            if let Mode::Search { ref mut input } = app.mode {
+                input.push(c);
+            }
+            app.update_search_filter();
         }
         _ => {}
     }
@@ -149,23 +251,61 @@ fn handle_confirm_action_mode(app: &mut App, key: KeyEvent) {
 }
 
 fn handle_new_session_mode(app: &mut App, key: KeyEvent) {
-    // Get current field to determine behavior
-    let current_field = if let Mode::NewSession { field, .. } = &app.mode {
-        *field
-    } else {
-        return;
-    };
+    // Get current field and worktree state to determine behavior
+    let (current_field, worktree_enabled) =
+        if let Mode::NewSession { field, worktree_enabled, .. } = &app.mode {
+            (*field, *worktree_enabled)
+        } else {
+            return;
+        };
 
     match key.code {
         KeyCode::Esc => {
             app.cancel();
         }
+        // Ctrl+W: toggle worktree mode
+        KeyCode::Char('w') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+            app.toggle_new_session_worktree();
+        }
         KeyCode::Tab => {
-            // Toggle between name and path fields
-            if let Mode::NewSession { ref mut field, .. } = app.mode {
+            // Cycle through fields: Name → Path → (Branch if worktree) → Name
+            if let Mode::NewSession {
+                ref mut field,
+                worktree_enabled,
+                ..
+            } = app.mode
+            {
                 *field = match field {
                     NewSessionField::Name => NewSessionField::Path,
+                    NewSessionField::Path => {
+                        if worktree_enabled {
+                            NewSessionField::Branch
+                        } else {
+                            NewSessionField::Name
+                        }
+                    }
+                    NewSessionField::Branch => NewSessionField::Name,
+                };
+            }
+        }
+        KeyCode::BackTab => {
+            // Cycle backwards through fields
+            if let Mode::NewSession {
+                ref mut field,
+                worktree_enabled,
+                ..
+            } = app.mode
+            {
+                *field = match field {
+                    NewSessionField::Name => {
+                        if worktree_enabled {
+                            NewSessionField::Branch
+                        } else {
+                            NewSessionField::Path
+                        }
+                    }
                     NewSessionField::Path => NewSessionField::Name,
+                    NewSessionField::Branch => NewSessionField::Path,
                 };
             }
         }
@@ -183,12 +323,68 @@ fn handle_new_session_mode(app: &mut App, key: KeyEvent) {
         KeyCode::Right if current_field == NewSessionField::Path => {
             app.accept_new_session_path_completion();
         }
+        // Branch navigation (only when branch field is active in worktree mode)
+        KeyCode::Down if current_field == NewSessionField::Branch && worktree_enabled => {
+            let filtered_count = app.filtered_new_session_branches().len();
+            if filtered_count > 0 {
+                if let Mode::NewSession {
+                    ref mut selected_branch,
+                    ..
+                } = app.mode
+                {
+                    *selected_branch =
+                        Some(selected_branch.map(|i| (i + 1) % filtered_count).unwrap_or(0));
+                }
+            }
+        }
+        KeyCode::Up if current_field == NewSessionField::Branch && worktree_enabled => {
+            let filtered_count = app.filtered_new_session_branches().len();
+            if filtered_count > 0 {
+                if let Mode::NewSession {
+                    ref mut selected_branch,
+                    ..
+                } = app.mode
+                {
+                    *selected_branch = Some(
+                        selected_branch
+                            .map(|i| if i == 0 { filtered_count - 1 } else { i - 1 })
+                            .unwrap_or(filtered_count - 1),
+                    );
+                }
+            }
+        }
+        // Accept branch completion with Right arrow
+        KeyCode::Right if current_field == NewSessionField::Branch && worktree_enabled => {
+            // Collect to owned strings to avoid borrow conflict
+            let filtered: Vec<String> = app
+                .filtered_new_session_branches()
+                .into_iter()
+                .map(|s| s.to_string())
+                .collect();
+            if let Mode::NewSession {
+                ref mut branch_input,
+                ref mut selected_branch,
+                ..
+            } = app.mode
+            {
+                if let Some(idx) = *selected_branch {
+                    if let Some(branch) = filtered.get(idx) {
+                        *branch_input = branch.clone();
+                        *selected_branch = None;
+                    }
+                } else if let Some(first) = filtered.first() {
+                    *branch_input = first.clone();
+                }
+            }
+        }
         KeyCode::Backspace => {
             if let Mode::NewSession {
                 ref mut name,
                 ref mut path,
                 ref field,
                 ref mut path_selected,
+                ref mut branch_input,
+                ref mut selected_branch,
                 ..
             } = app.mode
             {
@@ -200,10 +396,15 @@ fn handle_new_session_mode(app: &mut App, key: KeyEvent) {
                         path.pop();
                         *path_selected = None; // Reset selection on edit
                     }
+                    NewSessionField::Branch => {
+                        branch_input.pop();
+                        *selected_branch = None;
+                    }
                 }
             }
             if current_field == NewSessionField::Path {
                 app.update_new_session_path_suggestions();
+                app.update_new_session_branches();
             }
         }
         KeyCode::Char(c) => {
@@ -212,6 +413,8 @@ fn handle_new_session_mode(app: &mut App, key: KeyEvent) {
                 ref mut path,
                 ref field,
                 ref mut path_selected,
+                ref mut branch_input,
+                ref mut selected_branch,
                 ..
             } = app.mode
             {
@@ -226,10 +429,15 @@ fn handle_new_session_mode(app: &mut App, key: KeyEvent) {
                         path.push(c);
                         *path_selected = None; // Reset selection on edit
                     }
+                    NewSessionField::Branch => {
+                        branch_input.push(c);
+                        *selected_branch = None;
+                    }
                 }
             }
             if current_field == NewSessionField::Path {
                 app.update_new_session_path_suggestions();
+                app.update_new_session_branches();
             }
         }
         _ => {}
