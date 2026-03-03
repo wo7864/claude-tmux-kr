@@ -9,8 +9,11 @@
 mod helpers;
 mod mode;
 
+use std::collections::HashSet;
+
 use anyhow::Result;
 
+use crate::favorites;
 use crate::git::{self, GitContext, PullRequestInfo};
 use crate::group::{GroupedItem, GroupedView};
 use crate::scroll_state::ScrollState;
@@ -63,6 +66,8 @@ pub struct App {
     pub grouped_selected: usize,
     /// Grouped view state saved before entering search mode
     pub grouped_before_search: bool,
+    /// Favorite session names (persisted to disk)
+    pub favorites: HashSet<String>,
 }
 
 impl App {
@@ -94,6 +99,7 @@ impl App {
             grouped_view: GroupedView::new(),
             grouped_selected: 0,
             grouped_before_search: false,
+            favorites: favorites::load_favorites(),
         };
 
         app.rebuild_groups();
@@ -169,9 +175,9 @@ impl App {
     // Session selection and navigation
     // =========================================================================
 
-    /// Get filtered sessions based on current filter
+    /// Get filtered sessions based on current filter, with favorites sorted first
     pub fn filtered_sessions(&self) -> Vec<&Session> {
-        if self.filter.is_empty() {
+        let mut sessions: Vec<&Session> = if self.filter.is_empty() {
             self.sessions.iter().collect()
         } else {
             let filter_lower = self.filter.to_lowercase();
@@ -182,7 +188,9 @@ impl App {
                         || s.display_path().to_lowercase().contains(&filter_lower)
                 })
                 .collect()
-        }
+        };
+        sessions.sort_by_key(|s| !self.favorites.contains(&s.name));
+        sessions
     }
 
     /// Get the currently selected session
@@ -625,6 +633,11 @@ impl App {
 
             match Tmux::rename_session(&old, &new) {
                 Ok(_) => {
+                    // Sync favorites: transfer old name → new name
+                    if self.favorites.remove(&old) {
+                        self.favorites.insert(new.clone());
+                        let _ = favorites::save_favorites(&self.favorites);
+                    }
                     self.refresh_sessions();
                     self.message = Some(format!("'{}' → '{}' 이름 변경 완료", old, new));
                 }
@@ -1285,6 +1298,27 @@ impl App {
         self.mode = Mode::Help;
     }
 
+    /// Toggle the favorite status of the currently selected session
+    pub fn toggle_favorite(&mut self) {
+        self.clear_messages();
+        let name = if let Some(session) = self.selected_session() {
+            session.name.clone()
+        } else {
+            return;
+        };
+        if self.favorites.contains(&name) {
+            self.favorites.remove(&name);
+            self.message = Some(format!("'{}' 즐겨찾기 해제", name));
+        } else {
+            self.favorites.insert(name.clone());
+            self.message = Some(format!("'{}' 즐겨찾기 등록", name));
+        }
+        let _ = favorites::save_favorites(&self.favorites);
+        if self.grouped_view.enabled {
+            self.rebuild_groups();
+        }
+    }
+
     /// Cancel current mode and return to normal
     pub fn cancel(&mut self) {
         if matches!(self.mode, Mode::Search { .. }) {
@@ -1573,7 +1607,7 @@ impl App {
     pub fn rebuild_groups(&mut self) {
         // Inline filter logic to allow field-level borrow splitting
         // (filtered_sessions() borrows all of self, preventing &mut self.grouped_view)
-        let filtered: Vec<&Session> = if self.filter.is_empty() {
+        let mut filtered: Vec<&Session> = if self.filter.is_empty() {
             self.sessions.iter().collect()
         } else {
             let filter_lower = self.filter.to_lowercase();
@@ -1585,7 +1619,9 @@ impl App {
                 })
                 .collect()
         };
-        self.grouped_view.rebuild(&filtered);
+        // Same sort as filtered_sessions() to keep index consistency
+        filtered.sort_by_key(|s| !self.favorites.contains(&s.name));
+        self.grouped_view.rebuild(&filtered, &self.favorites);
     }
 
     /// Move grouped cursor to next visible item

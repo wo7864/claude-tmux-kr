@@ -192,18 +192,20 @@ fn render_grouped_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
 
     for group in app.grouped_view.groups.iter() {
         let is_header_selected = visual_pos == app.grouped_selected;
+        let is_fav_group = group.display_name == "★ 즐겨찾기";
 
         // Group header: ▼/▶ + path + (count)
         let arrow = if group.collapsed { "▶" } else { "▼" };
+        let header_color = if is_fav_group { Color::Yellow } else { Color::Cyan };
         let header_line = Line::from(vec![
             Span::styled(
                 format!("{} ", arrow),
-                Style::default().fg(Color::Cyan),
+                Style::default().fg(header_color),
             ),
             Span::styled(
                 &group.display_name,
                 Style::default()
-                    .fg(Color::Cyan)
+                    .fg(header_color)
                     .add_modifier(Modifier::BOLD),
             ),
             Span::styled(
@@ -251,8 +253,14 @@ fn render_grouped_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
                     // Build git info spans (branch + status only, path is in header)
                     let git_spans = build_git_info_spans(session);
 
+                    let is_fav = app.favorites.contains(&session.name);
                     let mut spans = vec![
                         Span::raw(format!("   {} ", marker)),
+                    ];
+                    if is_fav {
+                        spans.push(Span::styled("★ ", Style::default().fg(Color::Yellow)));
+                    }
+                    spans.extend([
                         Span::styled(&session.name, name_style),
                         Span::raw("  "),
                         Span::styled(status.symbol(), Style::default().fg(status_color)),
@@ -261,7 +269,7 @@ fn render_grouped_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
                             format!("{:<8}", status.label()),
                             Style::default().fg(status_color),
                         ),
-                    ];
+                    ]);
                     spans.extend(git_spans);
 
                     let style = if is_session_selected {
@@ -417,9 +425,15 @@ fn render_flat_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
         // Build git info spans
         let git_spans = build_git_info_spans(session);
 
-        // Line 1: marker + session name + status symbol/label
-        let line1 = Line::from(vec![
+        // Line 1: marker + favorite star + session name + status symbol/label
+        let is_fav = app.favorites.contains(&session.name);
+        let mut line1_spans = vec![
             Span::raw(format!(" {} ", marker)),
+        ];
+        if is_fav {
+            line1_spans.push(Span::styled("★ ", Style::default().fg(Color::Yellow)));
+        }
+        line1_spans.extend([
             Span::styled(
                 format!("{:<width$}", session.name, width = max_name_len),
                 name_style,
@@ -432,6 +446,7 @@ fn render_flat_session_list(frame: &mut Frame, app: &mut App, area: Rect) {
                 Style::default().fg(status_color),
             ),
         ]);
+        let line1 = Line::from(line1_spans);
 
         // Line 2: indented path + git info (branch + status)
         let mut line2_spans = vec![
@@ -690,7 +705,7 @@ fn render_status_bar(frame: &mut Frame, app: &App, area: Rect) {
 fn render_footer(frame: &mut Frame, app: &App, area: Rect) {
     let hints = match app.mode {
         Mode::Normal => {
-            "  ? 도움말  jk 이동  l 액션  ⏎ 전환  g 그룹  n 새세션  K 종료  R 새로고침  / 필터  : 검색  q 나가기"
+            "  ? 도움말  jk 이동  l 액션  ⏎ 전환  g 그룹  f 즐겨찾기  n 새세션  K 종료  R 새로고침  / 필터  : 검색  q 나가기"
         }
         Mode::ActionMenu => "  jk 이동  ⏎/l 선택  h/esc 뒤로  q 나가기",
         Mode::Filter { .. } => "  ⏎ 적용  esc 취소",

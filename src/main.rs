@@ -1,6 +1,7 @@
 mod app;
 mod completion;
 mod detection;
+mod favorites;
 mod git;
 mod group;
 mod input;

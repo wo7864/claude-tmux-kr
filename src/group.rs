@@ -65,11 +65,25 @@ impl GroupedView {
 
     /// Rebuild groups from the current filtered session list.
     /// Preserves collapsed state across rebuilds.
-    pub fn rebuild(&mut self, sessions: &[&Session]) {
-        // Group session indices by project root
-        let mut groups_map: BTreeMap<PathBuf, Vec<usize>> = BTreeMap::new();
+    /// Favorite sessions are collected into a special "★ 즐겨찾기" group at the top.
+    pub fn rebuild(&mut self, sessions: &[&Session], favorites: &HashSet<String>) {
+        let fav_root: PathBuf = PathBuf::from("★ 즐겨찾기");
+
+        // Separate favorite and non-favorite session indices
+        let mut fav_indices: Vec<usize> = Vec::new();
+        let mut non_fav_indices: Vec<usize> = Vec::new();
         for (i, session) in sessions.iter().enumerate() {
-            let root = session.project_root();
+            if favorites.contains(&session.name) {
+                fav_indices.push(i);
+            } else {
+                non_fav_indices.push(i);
+            }
+        }
+
+        // Group non-favorite sessions by project root
+        let mut groups_map: BTreeMap<PathBuf, Vec<usize>> = BTreeMap::new();
+        for &i in &non_fav_indices {
+            let root = sessions[i].project_root();
             groups_map.entry(root).or_default().push(i);
         }
 
@@ -107,6 +121,20 @@ impl GroupedView {
                 _ => a.display_name.cmp(&b.display_name),
             }
         });
+
+        // Insert favorites group at the top if there are any
+        if !fav_indices.is_empty() {
+            let collapsed = self.collapsed_roots.contains(&fav_root);
+            groups.insert(
+                0,
+                ProjectGroup {
+                    project_root: fav_root,
+                    display_name: "★ 즐겨찾기".to_string(),
+                    collapsed,
+                    session_indices: fav_indices,
+                },
+            );
+        }
 
         self.groups = groups;
     }

@@ -9,7 +9,7 @@ use ratatui::{
 };
 
 pub fn render_help(frame: &mut Frame) {
-    let area = centered_rect(60, 24, frame.area());
+    let area = centered_rect(60, 25, frame.area());
 
     let block = Block::default()
         .title(" 도움말 ")
@@ -36,6 +36,7 @@ pub fn render_help(frame: &mut Frame) {
         Line::raw("  /           세션 필터"),
         Line::raw("  :           실시간 검색"),
         Line::raw("  R           목록 새로고침"),
+        Line::raw("  f           즐겨찾기 토글"),
         Line::raw("  g           그룹/평면 보기 전환"),
         Line::raw(""),
         Line::from(Span::styled(

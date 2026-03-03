@@ -147,6 +147,11 @@ fn handle_normal_mode(app: &mut App, key: KeyEvent) {
             app.refresh();
         }
 
+        // Favorite toggle
+        KeyCode::Char('f') => {
+            app.toggle_favorite();
+        }
+
         // Help
         KeyCode::Char('?') => {
             app.show_help();
